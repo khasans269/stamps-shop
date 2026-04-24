@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 
 interface Props {
@@ -9,15 +10,13 @@ interface Props {
 }
 
 export function AddToCartButton({ productId, inStock }: Props) {
-  const { addItem } = useCart();
+  const { items, addItem, updateQuantity } = useCart();
   const [added, setAdded] = useState(false);
 
-  function handleClick() {
-    addItem(productId);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
-  }
+  const itemInCart = items.find((i) => i.productId === productId);
+  const qty = itemInCart?.quantity ?? 0;
 
+  // Товар не в наличии
   if (!inStock) {
     return (
       <div>
@@ -31,6 +30,47 @@ export function AddToCartButton({ productId, inStock }: Props) {
         </button>
       </div>
     );
+  }
+
+  // Товар уже в корзине — показываем управление количеством
+  if (qty > 0) {
+    return (
+      <div>
+        <div className="flex w-full items-center gap-3 rounded-2xl border border-zinc-300 bg-white p-2 md:w-auto md:self-start">
+          <span className="ml-2 text-sm text-zinc-600">В корзине:</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => updateQuantity(productId, qty - 1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 hover:bg-zinc-100"
+            >
+              −
+            </button>
+            <span className="min-w-8 text-center font-medium">{qty}</span>
+            <button
+              type="button"
+              onClick={() => updateQuantity(productId, qty + 1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 hover:bg-zinc-100"
+            >
+              +
+            </button>
+          </div>
+        </div>
+        <Link
+          href="/cart"
+          className="mt-2 inline-block text-sm text-zinc-500 hover:text-zinc-900"
+        >
+          Перейти в корзину →
+        </Link>
+      </div>
+    );
+  }
+
+  // Товар ещё не в корзине
+  function handleClick() {
+    addItem(productId);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2000);
   }
 
   return (

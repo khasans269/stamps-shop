@@ -56,29 +56,32 @@ export function CartView() {
             key={product.id}
             className="flex items-center gap-4 border-b border-zinc-200 py-4"
           >
-            {/* Мини-картинка */}
-            <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-100 to-zinc-200">
-              {product.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
-                  Нет фото
-                </div>
-              )}
-            </div>
-
-            {/* Название и цена за штуку */}
-            <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 font-medium">{product.name}</p>
-              <p className="mt-1 text-sm text-zinc-500">
-                {product.price.toLocaleString("ru-RU")} ₽ / шт
-              </p>
-            </div>
+            {/* Картинка + название + цена — кликабельная ссылка на товар */}
+            <Link
+              href={`/product/${product.slug}`}
+              className="-m-2 flex flex-1 min-w-0 items-center gap-4 rounded-xl p-2 transition-colors hover:bg-zinc-50"
+            >
+              <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-100 to-zinc-200">
+                {product.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
+                    Нет фото
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="line-clamp-2 font-medium">{product.name}</p>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {product.price.toLocaleString("ru-RU")} ₽ / шт
+                </p>
+              </div>
+            </Link>
 
             {/* Кнопки количества + цена строки + удалить */}
             <div className="flex flex-shrink-0 flex-col items-end gap-2">
