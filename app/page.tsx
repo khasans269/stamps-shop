@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-6 text-center">
+    <main className="flex flex-1 flex-col items-center justify-center bg-zinc-50 px-6 text-center">
       <p className="mb-4 text-sm uppercase tracking-widest text-zinc-500">
         Мастерская Аскара
       </p>
