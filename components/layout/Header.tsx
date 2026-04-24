@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CartCounter } from "@/components/layout/CartCounter";
 
 export function Header() {
   return (
@@ -28,12 +29,7 @@ export function Header() {
         </nav>
 
         {/* Корзина справа */}
-        <Link
-          href="/cart"
-          className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
-        >
-          Корзина (0)
-        </Link>
+        <CartCounter />
       </div>
     </header>
   );

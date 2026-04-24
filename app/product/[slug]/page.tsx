@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import productsData from "@/data/products.json";
 import type { Product } from "@/types";
+import { AddToCartButton } from "@/components/product/AddToCartButton";
 
 // ─── Утилита ────────────────────────────────────────────────────────────────
 
@@ -88,26 +89,7 @@ export default async function ProductPage({
             {product.description}
           </p>
 
-          {/* Кнопка «В корзину» или плашка «Нет в наличии» */}
-          {product.inStock ? (
-            <button
-              type="button"
-              className="w-full rounded-2xl bg-zinc-900 px-6 py-4 text-base font-medium text-white transition-opacity hover:opacity-80 md:w-auto md:self-start"
-            >
-              В корзину
-            </button>
-          ) : (
-            <div>
-              <p className="mb-3 font-medium text-zinc-500">Нет в наличии</p>
-              <button
-                type="button"
-                disabled
-                className="w-full cursor-not-allowed rounded-2xl bg-zinc-200 px-6 py-4 text-base font-medium text-zinc-400 md:w-auto md:self-start"
-              >
-                В корзину
-              </button>
-            </div>
-          )}
+          <AddToCartButton productId={product.id} inStock={product.inStock} />
         </div>
       </div>
 

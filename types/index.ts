@@ -18,6 +18,11 @@ export const CATEGORY_ORDER: Category[] = [
   "tools",
 ];
 
+export interface CartItem {
+  productId: string;
+  quantity: number;
+}
+
 export interface Product {
   id: string;
   slug: string;
