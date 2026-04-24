@@ -32,4 +32,8 @@ export interface Product {
   description: string;
   image?: string; // путь относительно /public, например "/images/products/slug.jpg"
   inStock: boolean;
+  // Дополнительные характеристики. Опциональные — если у товара их нет,
+  // поле не указывается в products.json, и на странице оно не отобразится.
+  itemsInSet?: number; // количество элементов в наборе (например, 33 буквы)
+  letterHeight?: string; // высота букв, строка — чтобы поддерживать "4 мм" или "4, 6 и 8 мм"
 }

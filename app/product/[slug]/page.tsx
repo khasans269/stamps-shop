@@ -84,6 +84,28 @@ export default async function ProductPage({
             {product.price.toLocaleString("ru-RU")} ₽
           </p>
 
+          {/* Характеристики. Показываем только те поля, которые заданы в products.json. */}
+          {(product.itemsInSet || product.letterHeight) && (
+            <dl className="mb-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              {product.itemsInSet && (
+                <div className="flex gap-2">
+                  <dt className="text-zinc-500">В наборе:</dt>
+                  <dd className="font-medium text-zinc-900">
+                    {product.itemsInSet} шт
+                  </dd>
+                </div>
+              )}
+              {product.letterHeight && (
+                <div className="flex gap-2">
+                  <dt className="text-zinc-500">Высота букв:</dt>
+                  <dd className="font-medium text-zinc-900">
+                    {product.letterHeight}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          )}
+
           {/* Описание */}
           <p className="mb-8 leading-relaxed text-zinc-600">
             {product.description}
