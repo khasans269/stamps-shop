@@ -3,15 +3,18 @@ import Image from "next/image";
 import type { Product } from "@/types";
 
 // Карточка товара для грида каталога.
-// Показывает фото (или placeholder, если картинки нет), название, цену
-// и пометку «Нет в наличии», если товар закончился.
+// Показывает первое фото из массива images (или placeholder, если фото нет),
+// название, цену и пометку «Нет в наличии», если товар закончился.
 export function ProductCard({ product }: { product: Product }) {
+  // Первое фото в массиве — главное. Если массив пустой или не задан — null.
+  const mainImage = product.images?.[0];
+
   return (
     <Link href={`/product/${product.slug}`} className="group block">
       <div className="relative mb-3 aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 transition-transform duration-300 group-hover:scale-[1.02]">
-        {product.image ? (
+        {mainImage ? (
           <Image
-            src={product.image}
+            src={mainImage}
             alt={product.name}
             fill
             className="object-cover"

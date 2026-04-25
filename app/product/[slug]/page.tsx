@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
 import productsData from "@/data/products.json";
 import type { Product } from "@/types";
 import { AddToCartButton } from "@/components/product/AddToCartButton";
+import { ProductGallery } from "@/components/product/ProductGallery";
 
 // ─── Утилита ────────────────────────────────────────────────────────────────
 
@@ -55,26 +55,9 @@ export default async function ProductPage({
       {/* Основная секция: на мобильном — столбец, на md+ — две колонки */}
       <div className="flex flex-col gap-8 md:flex-row md:gap-12">
 
-        {/* ЛЕВАЯ КОЛОНКА: фото или placeholder */}
+        {/* ЛЕВАЯ КОЛОНКА: галерея фото с лайтбоксом и зумом */}
         <div className="w-full md:w-1/2">
-          <div className="relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200">
-            {product.image ? (
-              <Image
-                src={product.image}
-                alt={product.name}
-                fill
-                className="object-cover"
-                // На мобильном фото занимает всю ширину, на десктопе — половину.
-                sizes="(max-width: 768px) 100vw, 50vw"
-                // priority: это главное фото на странице, грузим в первую очередь.
-                priority
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-zinc-400">
-                Нет фото
-              </div>
-            )}
-          </div>
+          <ProductGallery images={product.images ?? []} name={product.name} />
         </div>
 
         {/* ПРАВАЯ КОЛОНКА: информация о товаре */}

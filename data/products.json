@@ -7,7 +7,11 @@
       "price": 750,
       "category": "alphabets",
       "description": "Набор декоративных штампов «Василиса Прекрасная» для работы с керамикой. Стилизованный декоративный шрифт — крупные заглавные буквы высотой 12 мм дают чёткий, уверенный оттиск на сырой глине. В наборе 33 буквы русского алфавита и 10 цифр (0–9), в удобном кейсе для хранения. Подходит для подписи авторских работ, декорирования кружек, плакеток, табличек из глины.",
-      "image": "/images/products/vasilisa-prekrasnaya.jpg",
+      "images": [
+        "/images/products/vasilisa-prekrasnaya-1.jpg",
+        "/images/products/vasilisa-prekrasnaya-2.jpg",
+        "/images/products/vasilisa-prekrasnaya-3.jpg"
+      ],
       "inStock": true,
       "itemsInSet": 43,
       "letterHeight": "12 мм"
