@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Product } from "@/types";
 
 // Карточка товара для грида каталога.
@@ -7,15 +8,17 @@ import type { Product } from "@/types";
 export function ProductCard({ product }: { product: Product }) {
   return (
     <Link href={`/product/${product.slug}`} className="group block">
-      <div className="mb-3 aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 transition-transform duration-300 group-hover:scale-[1.02]">
+      <div className="relative mb-3 aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 transition-transform duration-300 group-hover:scale-[1.02]">
         {product.image ? (
-          // Пока используем обычный <img>; позже перейдём на next/image
-          // когда у товаров будут известны реальные размеры фото.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={product.image}
             alt={product.name}
-            className="h-full w-full object-cover"
+            fill
+            className="object-cover"
+            // sizes — подсказка браузеру: на мобильном карточка занимает половину
+            // экрана, на планшете — треть, на десктопе — четверть. По этой
+            // подсказке Next.js решает, какой размер фото подтянуть.
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">

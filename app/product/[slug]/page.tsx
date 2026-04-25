@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import productsData from "@/data/products.json";
 import type { Product } from "@/types";
@@ -56,13 +57,17 @@ export default async function ProductPage({
 
         {/* ЛЕВАЯ КОЛОНКА: фото или placeholder */}
         <div className="w-full md:w-1/2">
-          <div className="aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200">
+          <div className="relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200">
             {product.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={product.image}
                 alt={product.name}
-                className="h-full w-full object-cover"
+                fill
+                className="object-cover"
+                // На мобильном фото занимает всю ширину, на десктопе — половину.
+                sizes="(max-width: 768px) 100vw, 50vw"
+                // priority: это главное фото на странице, грузим в первую очередь.
+                priority
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-zinc-400">
