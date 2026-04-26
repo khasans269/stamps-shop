@@ -1,7 +1,21 @@
 {
   "products": [
     {
-      "id": "p007",
+      "id": "p001",
+      "slug": "bazovyy-dlya-ponedelnikov",
+      "name": "Алфавит «Базовый для понедельников»",
+      "price": 550,
+      "category": "alphabets",
+      "description": "Набор базовых штампов «Для понедельников» — простой, разборчивый шрифт без украшений. Универсальные заглавные буквы кириллицы высотой 8 мм — то, что нужно, когда не до изысков. В наборе 33 буквы и два дополнительных штампа на Й и Ё. Подходит для подписи авторских работ, нумерации, простых надписей на керамике, бирках и плакетках.",
+      "images": [
+        "/images/products/bazovyy-dlya-ponedelnikov-1.jpg"
+      ],
+      "inStock": true,
+      "itemsInSet": 35,
+      "letterHeight": "8 мм"
+    },
+    {
+      "id": "p002",
       "slug": "vasilisa-prekrasnaya",
       "name": "Алфавит «Василиса Прекрасная»",
       "price": 750,
@@ -17,7 +31,7 @@
       "letterHeight": "12 мм"
     },
     {
-      "id": "p001",
+      "id": "p003",
       "slug": "alfavit-kirillica-malyy",
       "name": "Алфавит кириллица 8 мм",
       "price": 1800,
@@ -26,7 +40,7 @@
       "inStock": true
     },
     {
-      "id": "p002",
+      "id": "p004",
       "slug": "alfavit-latinica-bolshoy",
       "name": "Алфавит латиница 12 мм",
       "price": 2200,
@@ -35,7 +49,7 @@
       "inStock": true
     },
     {
-      "id": "p003",
+      "id": "p005",
       "slug": "shtamp-uzor-botanika",
       "name": "Штамп «Ботаника»",
       "price": 950,
@@ -44,7 +58,7 @@
       "inStock": true
     },
     {
-      "id": "p004",
+      "id": "p006",
       "slug": "shtamp-uzor-geometria",
       "name": "Штамп «Геометрия»",
       "price": 950,
@@ -53,7 +67,7 @@
       "inStock": false
     },
     {
-      "id": "p005",
+      "id": "p007",
       "slug": "teksturnyy-rolik-volny",
       "name": "Текстурный ролик «Волны»",
       "price": 1500,
@@ -62,13 +76,29 @@
       "inStock": true
     },
     {
-      "id": "p006",
+      "id": "p008",
       "slug": "instrument-rebro-malyy",
       "name": "Ребро для сглаживания",
       "price": 450,
       "category": "tools",
       "description": "Гибкое ребро для сглаживания поверхности, удобное для работы с округлыми формами. Размер 8×4 см.",
       "inStock": true
+    },
+    {
+      "id": "p009",
+      "slug": "base-monday",
+      "name": "Алфавит «Base Monday»",
+      "price": 750,
+      "category": "alphabets",
+      "description": "Дополнить позже",
+      "images": [
+        "/images/products/vasilisa-prekrasnaya-1.jpg",
+        "/images/products/vasilisa-prekrasnaya-2.jpg",
+        "/images/products/vasilisa-prekrasnaya-3.jpg"
+      ],
+      "inStock": true,
+      "itemsInSet": 26,
+      "letterHeight": "8 мм"
     }
   ]
 }
