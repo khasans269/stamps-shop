@@ -33,10 +33,18 @@ export function Footer() {
               </li>
               <li>
                 <Link
+                  href="/contacts"
+                  className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
+                >
+                  Контакты и реквизиты
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/legal/oferta"
                   className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
                 >
-                  Оферта
+                  Договор-оферта
                 </Link>
               </li>
               <li>
@@ -56,10 +64,10 @@ export function Footer() {
             <ul className="flex flex-col gap-2">
               <li>
                 <a
-                  href="mailto:askarsibay@gmail.com"
+                  href="mailto:khasans269@gmail.com"
                   className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
                 >
-                  askarsibay@gmail.com
+                  khasans269@gmail.com
                 </a>
               </li>
               <li>
