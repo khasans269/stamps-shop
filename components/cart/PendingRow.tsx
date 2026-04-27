@@ -29,7 +29,10 @@ export function PendingRow({
   const [now, setNow] = useState<number>(() => Date.now());
 
   useEffect(() => {
-    setNow(Date.now());
+    // Первый замер происходит через 100 мс через интервал. Вызывать
+    // setNow прямо здесь — каскадный ререндер, на который ругается
+    // линтер; useState-инициализатор выше уже выставил now на момент
+    // монтирования, разница в 100 мс глазу не видна.
     const id = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(id);
   }, [expiresAt]);

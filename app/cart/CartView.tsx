@@ -65,6 +65,14 @@ export function CartView() {
   // кнопки "Очистить корзину" и пр. (нет смысла её жать второй раз).
   const hasVisible = rows.some((r) => !r.line.isPending);
 
+  // Минимальная сумма заказа в рублях. Должна совпадать с такой же
+  // константой в /checkout/CheckoutClient.tsx — там валидация при
+  // отправке формы. Здесь проверка нужна, чтобы не пускать на чекаут
+  // до набора нужной суммы.
+  const MIN_ORDER_TOTAL = 500;
+  const meetsMinimum = totalPrice >= MIN_ORDER_TOTAL;
+  const canCheckout = hasVisible && meetsMinimum;
+
   // ── Непустая корзина ──────────────────────────────────────────────────────
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -167,6 +175,17 @@ export function CartView() {
           Итого: {totalPrice.toLocaleString("ru-RU")} ₽
         </p>
 
+        {/* Подсказка про минимум — показываем только если в корзине есть
+            видимые товары, но сумма не дотягивает до минимума. На пустой
+            корзине этот блок не нужен (там будет другой UI). */}
+        {hasVisible && !meetsMinimum && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Минимальная сумма заказа — {MIN_ORDER_TOTAL} ₽. Добавьте ещё
+            товаров на {(MIN_ORDER_TOTAL - totalPrice).toLocaleString("ru-RU")} ₽,
+            чтобы оформить заказ.
+          </p>
+        )}
+
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <button
             type="button"
@@ -178,9 +197,9 @@ export function CartView() {
           </button>
           <Link
             href="/checkout"
-            aria-disabled={!hasVisible}
+            aria-disabled={!canCheckout}
             className={`rounded-2xl bg-zinc-900 px-6 py-3 text-center font-medium text-white transition hover:bg-zinc-700 ${
-              !hasVisible ? "pointer-events-none opacity-50" : ""
+              !canCheckout ? "pointer-events-none opacity-50" : ""
             }`}
           >
             К оформлению

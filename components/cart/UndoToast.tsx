@@ -28,8 +28,13 @@ export function UndoToast() {
     useCart();
   // На странице корзины удалённые строки уже показываются inline-плашкой
   // PendingRow с кнопкой "Вернуть" — там этот глобальный тост избыточен.
+  // На странице чекаута и /checkout/success тост тоже скрыт: на чекауте
+  // он отвлекает от заполнения формы, а на success — пользователь уже
+  // отправил заявку, и предложение "Вернуть товар" в этом контексте
+  // выглядит странно (после оформления страница сама чистит корзину).
   const pathname = usePathname();
   const isCartPage = pathname === "/cart";
+  const isCheckoutPage = pathname?.startsWith("/checkout") ?? false;
 
   // Текущее время — обновляем каждые 100 мс, чтобы кружок плавно уменьшался.
   // Этот интервал работает только пока тост виден (есть pendingExpiresAt),
@@ -38,8 +43,9 @@ export function UndoToast() {
 
   useEffect(() => {
     if (pendingExpiresAt === null) return;
-    // Сразу синхронизируемся, чтобы первый кадр уже был корректным.
-    setNow(Date.now());
+    // Первый замер — через 100 мс через интервал. setNow прямо в теле
+    // эффекта запрещён линтером (каскадный ререндер); полагаемся на
+    // useState-инициализатор выше, разница в 100 мс не видна.
     const id = setInterval(() => {
       setNow(Date.now());
     }, 100);
@@ -47,11 +53,12 @@ export function UndoToast() {
   }, [pendingExpiresAt]);
 
   // Если ничего не помечено к удалению — тост не рисуем.
-  // На странице корзины тоже не рисуем — там уже есть inline-плашки.
+  // На страницах /cart и /checkout* — тоже не рисуем (см. выше).
   if (
     pendingDeletions.length === 0 ||
     pendingExpiresAt === null ||
-    isCartPage
+    isCartPage ||
+    isCheckoutPage
   ) {
     return null;
   }
