@@ -39,6 +39,9 @@ interface IncomingOrder {
     name: string;
     phone: string;
     email: string;
+    // Опциональный Telegram-ник в формате "@username" (нормализуется
+    // на фронте). Если человек ничего не указал — null.
+    telegram: string | null;
   };
   delivery: {
     method: string;
@@ -105,6 +108,9 @@ function formatTelegramMessage(orderId: string, order: IncomingOrder): string {
   lines.push(`Имя: ${escapeMd(order.contact.name)}`);
   lines.push(`Телефон: ${escapeMd(order.contact.phone)}`);
   lines.push(`Email: ${escapeMd(order.contact.email)}`);
+  if (order.contact.telegram) {
+    lines.push(`Telegram: ${escapeMd(order.contact.telegram)}`);
+  }
   lines.push("");
   lines.push("*Доставка*");
   lines.push(`Способ: ${escapeMd(order.delivery.methodLabel)}`);
@@ -157,6 +163,20 @@ function validateOrder(data: unknown): { error: string } | { order: IncomingOrde
     !isValidEmail(email)
   ) {
     return { error: "Контактные данные не прошли проверку" };
+  }
+
+  // Telegram-ник опционален. Принимаем строку или null. На клиенте
+  // нормализован (@username); ещё раз почистим на всякий случай и
+  // отрежем по разумной длине.
+  const tgRaw = contact.telegram;
+  let telegram: string | null = null;
+  if (typeof tgRaw === "string") {
+    const cleaned = tgRaw
+      .trim()
+      .replace(/^@+/, "")
+      .replace(/[^A-Za-z0-9_]/g, "")
+      .slice(0, 64);
+    telegram = cleaned ? `@${cleaned}` : null;
   }
 
   const method = asString(delivery.method).trim();
@@ -218,7 +238,7 @@ function validateOrder(data: unknown): { error: string } | { order: IncomingOrde
 
   return {
     order: {
-      contact: { name, phone, email },
+      contact: { name, phone, email, telegram },
       delivery: { method, methodLabel, address },
       comment,
       items: cleanItems,
@@ -259,31 +279,24 @@ async function sendToTelegram(orderId: string, order: IncomingOrder): Promise<vo
 // ── Отправка в Google Sheets ────────────────────────────────────────────────
 
 async function sendToSheets(orderId: string, order: IncomingOrder): Promise<void> {
-  const url = process.env.SHEETS_WEBHOOK_URL;
-  if (!url) {
+  const rawUrl = process.env.SHEETS_WEBHOOK_URL;
+  if (!rawUrl) {
     throw new Error("SHEETS_WEBHOOK_URL не задан");
   }
+  // На всякий случай убираем пробелы и переводы строки, которые
+  // легко прилипают при копи-пасте URL в дашборд Vercel.
+  const url = rawUrl.trim();
 
-  // Для Sheets отправляем плоскую структуру: одна строка таблицы =
-  // один заказ. Состав сворачиваем в человекочитаемую строку, чтобы
-  // в одной ячейке было понятно, что заказали.
-  const itemsText = order.items
-    .map(
-      (it) =>
-        `${it.name} — ${it.quantity} × ${it.price.toLocaleString("ru-RU")} ₽ = ${it.sum.toLocaleString("ru-RU")} ₽`
-    )
-    .join("\n");
-
+  // Apps Script у Аскара ждёт вложенную структуру: data.contact.name,
+  // data.delivery.methodLabel, data.items как массив. Поэтому шлём в
+  // том же виде, в котором собрали заказ (без «расплющивания»).
   const payload = {
     orderId,
     createdAt: new Date().toISOString(),
-    name: order.contact.name,
-    phone: order.contact.phone,
-    email: order.contact.email,
-    deliveryMethod: order.delivery.methodLabel,
-    address: order.delivery.address,
+    contact: order.contact,
+    delivery: order.delivery,
     comment: order.comment ?? "",
-    items: itemsText,
+    items: order.items,
     total: order.total,
   };
 
@@ -295,9 +308,27 @@ async function sendToSheets(orderId: string, order: IncomingOrder): Promise<void
     redirect: "follow",
   });
 
+  // Apps Script Web App может вернуть HTML с ошибкой и при этом
+  // прислать 200 — поэтому всегда читаем тело и логируем кусок.
+  // Если тело — JSON с {result: "success"}, считаем ок.
+  const bodyText = await res.text().catch(() => "");
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Sheets ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(`Sheets HTTP ${res.status}: ${bodyText.slice(0, 500)}`);
+  }
+
+  // Если в ответе явно есть слово "error" или это HTML-страница
+  // ("<!doctype" / "<html"), считаем это сбоем — Apps Script не
+  // отработал doPost, а отдал страницу авторизации/ошибки.
+  const lower = bodyText.toLowerCase();
+  if (
+    lower.includes("<!doctype") ||
+    lower.includes("<html") ||
+    lower.includes("\"error\"") ||
+    lower.includes("script function not found")
+  ) {
+    throw new Error(
+      `Sheets вернул не JSON-успех (host=${new URL(url).host}): ${bodyText.slice(0, 500)}`
+    );
   }
 }
 

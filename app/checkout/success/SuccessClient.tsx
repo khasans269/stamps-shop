@@ -15,6 +15,10 @@ interface OrderPayload {
     name: string;
     phone: string;
     email: string;
+    // Опциональный Telegram-ник. Может прийти как null или вовсе
+    // отсутствовать (старые записи в sessionStorage), поэтому поле
+    // опциональное.
+    telegram?: string | null;
   };
   delivery: {
     method: string;

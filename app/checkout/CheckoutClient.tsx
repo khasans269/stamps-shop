@@ -65,6 +65,19 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+// Нормализуем Telegram-ник: убираем пробелы и ведущие @, оставляем
+// только латиницу/цифры/подчёркивание (это то, что разрешает сам
+// Telegram), и приклеиваем "@" обратно. Если после чистки ничего
+// не осталось — возвращаем пустую строку: считаем, что человек
+// ничего не указал.
+function normalizeTelegram(input: string): string {
+  const cleaned = input
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[^A-Za-z0-9_]/g, "");
+  return cleaned ? `@${cleaned}` : "";
+}
+
 export function CheckoutClient() {
   const router = useRouter();
   const { items, totalCount } = useCart();
@@ -92,6 +105,9 @@ export function CheckoutClient() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  // Telegram-ник опционален. Храним как ввёл пользователь, нормализуем
+  // только перед отправкой (приведём к виду @ник, выкинем мусор).
+  const [telegram, setTelegram] = useState("");
   const [delivery, setDelivery] = useState<DeliveryValue>("cdek");
   const [address, setAddress] = useState("");
   const [comment, setComment] = useState("");
@@ -161,11 +177,15 @@ export function CheckoutClient() {
 
     // Тело запроса. Номер заказа сервер сгенерирует сам и вернёт нам
     // в ответе — поэтому здесь его нет.
+    const normalizedTelegram = normalizeTelegram(telegram);
     const requestBody = {
       contact: {
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim(),
+        // Только если человек реально что-то вписал — иначе null,
+        // чтобы серверный валидатор не споткнулся об пустую строку.
+        telegram: normalizedTelegram || null,
       },
       delivery: {
         method: delivery,
@@ -305,6 +325,20 @@ export function CheckoutClient() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
               placeholder="vasya@example.com"
+            />
+          </Field>
+
+          <Field
+            label="Telegram"
+            hint="Необязательно. Если укажете — напишу вам в Telegram, не нужно будет ждать звонка."
+          >
+            <input
+              type="text"
+              autoComplete="off"
+              value={telegram}
+              onChange={(e) => setTelegram(e.target.value)}
+              className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
+              placeholder="@username"
             />
           </Field>
         </fieldset>
