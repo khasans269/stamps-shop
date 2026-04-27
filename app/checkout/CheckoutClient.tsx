@@ -30,6 +30,35 @@ function isValidPhone(value: string): boolean {
   return digits.length === 10 || digits.length === 11;
 }
 
+// Форматируем телефон в маску "+7 (XXX) XXX-XX-XX" по мере ввода.
+// Из любой строки достаём только цифры, нормализуем "8..." → "7...",
+// если человек начал не с 7 — подставляем 7 спереди (например, ввели
+// "926..." → читаем как мобильный РФ). Лишнее (>11 цифр) отрезаем.
+//
+// Возвращаем форматированную строку. Закрывающие символы скобок и
+// дефисов появляются ТОЛЬКО когда уже введена следующая цифра — иначе
+// бэкспейс цеплялся бы за маску и удалить было бы тяжело.
+function formatPhone(input: string): string {
+  let digits = input.replace(/\D/g, "");
+  if (digits.startsWith("8")) digits = "7" + digits.slice(1);
+  if (digits.length > 0 && !digits.startsWith("7")) digits = "7" + digits;
+  digits = digits.slice(0, 11);
+
+  if (digits.length === 0) return "";
+  if (digits.length === 1) return "+7";
+  if (digits.length <= 4) return `+7 (${digits.slice(1)}`;
+  if (digits.length <= 7) {
+    return `+7 (${digits.slice(1, 4)}) ${digits.slice(4)}`;
+  }
+  if (digits.length <= 9) {
+    return `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(
+    7,
+    9
+  )}-${digits.slice(9, 11)}`;
+}
+
 // Простая проверка email — наличие @ и точки после неё. Полную RFC
 // валидацию делать не нужно; реальную проверку сделает почтовик.
 function isValidEmail(value: string): boolean {
@@ -250,14 +279,14 @@ export function CheckoutClient() {
           <Field
             label="Телефон"
             error={errors.phone}
-            hint="С номера, по которому проще всего связаться. Пишу в Telegram/WhatsApp по этому же номеру."
             required
           >
             <input
               type="tel"
+              inputMode="tel"
               autoComplete="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
               className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
               placeholder="+7 (___) ___-__-__"
             />
@@ -332,12 +361,15 @@ export function CheckoutClient() {
             />
           </Field>
 
-          <Field label="Комментарий" hint="Если есть пожелания по упаковке или индивидуальному заказу.">
+          <Field
+            label="Комментарий"
+            hint="Удобный способ связи (Telegram, WhatsApp, звонок), пожелания по упаковке или деталям индивидуального заказа."
+          >
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               className="min-h-[80px] w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
-              placeholder="Например: подарок, добавьте открытку"
+              placeholder="Например: лучше написать в Telegram; упаковать как подарок"
             />
           </Field>
         </fieldset>
