@@ -5,7 +5,7 @@
       "slug": "bazovyy-dlya-ponedelnikov",
       "name": "Алфавит «Базовый для понедельников»",
       "price": 550,
-      "category": "alphabets",
+      "category": "alphabets-cyrillic",
       "description": "Набор базовых штампов «Для понедельников» — простой, разборчивый шрифт без украшений. Универсальные заглавные буквы кириллицы высотой 8 мм — то, что нужно, когда не до изысков. В наборе 33 буквы и два дополнительных штампа на Й и Ё. Подходит для подписи авторских работ, нумерации, простых надписей на керамике, бирках и плакетках.",
       "images": [
         "/images/products/bazovyy-dlya-ponedelnikov-1.jpg"
@@ -19,7 +19,7 @@
       "slug": "vasilisa-prekrasnaya",
       "name": "Алфавит «Василиса Прекрасная»",
       "price": 750,
-      "category": "alphabets",
+      "category": "alphabets-cyrillic",
       "description": "Набор декоративных штампов «Василиса Прекрасная» для работы с керамикой. Стилизованный декоративный шрифт — крупные заглавные буквы высотой 12 мм дают чёткий, уверенный оттиск на сырой глине. В наборе 33 буквы русского алфавита и 10 цифр (0–9), в удобном кейсе для хранения. Подходит для подписи авторских работ, декорирования кружек, плакеток, табличек из глины.",
       "images": [
         "/images/products/vasilisa-prekrasnaya-1.jpg",
@@ -35,7 +35,7 @@
       "slug": "alfavit-kirillica-malyy",
       "name": "Алфавит кириллица 8 мм",
       "price": 1800,
-      "category": "alphabets",
+      "category": "alphabets-cyrillic",
       "description": "Набор штампов с кириллическим алфавитом, высота символа 8 мм. 33 буквы и знаки препинания. Идеально для подписи работ и мелких надписей на керамике.",
       "inStock": true
     },
@@ -44,7 +44,7 @@
       "slug": "alfavit-latinica-bolshoy",
       "name": "Алфавит латиница 12 мм",
       "price": 2200,
-      "category": "alphabets",
+      "category": "alphabets-latin",
       "description": "Набор штампов с латинским алфавитом высотой 12 мм. 26 букв и цифры. Подойдёт для крупных надписей и декоративных работ.",
       "inStock": true
     },
@@ -89,7 +89,7 @@
       "slug": "base-monday",
       "name": "Алфавит «Base Monday»",
       "price": 750,
-      "category": "alphabets",
+      "category": "alphabets-latin",
       "description": "Дополнить позже",
       "images": [
         "/images/products/vasilisa-prekrasnaya-1.jpg",

@@ -8,7 +8,7 @@ import { Suspense } from "react";
 import { SuccessClient } from "./SuccessClient";
 
 export const metadata: Metadata = {
-  title: "Заявка принята — Мастерская Аскара",
+  title: "Заявка принята — Керамическая мастерская Аскара",
   description:
     "Спасибо за заказ! Я свяжусь с вами в течение рабочего дня для уточнения деталей.",
 };

@@ -72,22 +72,35 @@ export function Footer() {
               </li>
               <li>
                 <a
-                  href="https://instagram.com/stamps_askar"
+                  href="https://t.me/pri3dnt"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
                 >
-                  @stamps_askar
+                  Написать в Telegram — @pri3dnt
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://t.me/uniceramics"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
+                >
+                  Telegram-канал — @uniceramics
                 </a>
               </li>
             </ul>
           </div>
         </div>
 
-        {/* Копирайт */}
-        <p className="mt-8 border-t border-zinc-200 pt-6 text-center text-sm text-zinc-500">
-          © 2026 Мастерская Аскара
-        </p>
+        {/* Юридическая подпись внизу — заменили общий копирайт.
+            По ЗоЗПП покупатель должен видеть, кто продавец, на каждой
+            странице сайта. Самый аккуратный способ — мелкая строка в подвале. */}
+        <div className="mt-8 border-t border-zinc-200 pt-6 text-center text-sm text-zinc-500">
+          <p>Самозанятый Хасанов Аскар Ильмирович</p>
+          <p className="mt-1">ИНН: 026706506184</p>
+        </div>
       </div>
     </footer>
   );

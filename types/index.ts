@@ -1,18 +1,37 @@
 // Категории товаров в магазине.
 // ID — на латинице (используется внутри кода и в URL).
-// Название для UI — в CATEGORY_NAMES ниже.
-export type Category = "alphabets" | "patterns" | "rollers" | "tools";
+// Названия для UI — в CATEGORY_NAMES (длинное, для заголовков и meta)
+// и CATEGORY_NAMES_SHORT (короткое, для чипсов фильтра).
+export type Category =
+  | "alphabets-cyrillic"
+  | "alphabets-latin"
+  | "patterns"
+  | "rollers"
+  | "tools";
 
+// Полные названия — для заголовка страницы категории, meta-тегов,
+// карточек товаров и любых мест, где есть пространство.
 export const CATEGORY_NAMES: Record<Category, string> = {
-  alphabets: "Алфавиты",
+  "alphabets-cyrillic": "Алфавиты — кириллица",
+  "alphabets-latin": "Алфавиты — латиница",
   patterns: "Штампы с узорами",
+  rollers: "Текстурные ролики",
+  tools: "Инструменты",
+};
+
+// Короткие подписи для чипсов фильтра — там тесно.
+export const CATEGORY_NAMES_SHORT: Record<Category, string> = {
+  "alphabets-cyrillic": "Кириллица",
+  "alphabets-latin": "Латиница",
+  patterns: "Узоры",
   rollers: "Текстурные ролики",
   tools: "Инструменты",
 };
 
 // Порядок категорий в интерфейсе (на страницах каталога, в меню и т.д.).
 export const CATEGORY_ORDER: Category[] = [
-  "alphabets",
+  "alphabets-cyrillic",
+  "alphabets-latin",
   "patterns",
   "rollers",
   "tools",

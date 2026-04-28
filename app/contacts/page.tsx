@@ -8,9 +8,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Контакты и реквизиты — Мастерская Аскара",
+  title: "Контакты и реквизиты — Штампы для керамики",
   description:
-    "Контактные данные и реквизиты Мастерской Аскара — самозанятого мастера штампов для керамики.",
+    "Контактные данные и реквизиты — самозанятый мастер штампов для керамики Хасанов Аскар Ильмирович.",
 };
 
 export default function ContactsPage() {
@@ -21,7 +21,7 @@ export default function ContactsPage() {
       </h1>
       <p className="mt-3 text-zinc-500">
         Если у вас есть вопросы о товарах, заказах или индивидуальном
-        изготовлении — напишите или позвоните. Отвечаю в течение рабочего дня.
+        изготовлении — напишите. Отвечаю в течение рабочего дня.
       </p>
 
       {/* Способы связи */}
@@ -30,12 +30,14 @@ export default function ContactsPage() {
       </h2>
       <ul className="mt-4 flex flex-col gap-3">
         <li>
-          <span className="text-sm text-zinc-500">Телефон, Telegram, WhatsApp:</span>{" "}
+          <span className="text-sm text-zinc-500">Telegram:</span>{" "}
           <a
-            href="tel:+79279298770"
+            href="https://t.me/pri3dnt"
+            target="_blank"
+            rel="noopener noreferrer"
             className="font-medium text-zinc-900 underline hover:text-zinc-700"
           >
-            +7 927 929-87-70
+            @pri3dnt
           </a>
         </li>
         <li>
@@ -47,18 +49,24 @@ export default function ContactsPage() {
             khasans269@gmail.com
           </a>
         </li>
-        <li>
-          <span className="text-sm text-zinc-500">Instagram:</span>{" "}
-          <a
-            href="https://instagram.com/stamps_askar"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-zinc-900 underline hover:text-zinc-700"
-          >
-            @stamps_askar
-          </a>
-        </li>
       </ul>
+
+      {/* Telegram-канал — отдельной секцией: это не способ связи,
+          а площадка для подписки на новости магазина. */}
+      <h2 className="mt-10 text-xl font-semibold text-zinc-900">
+        Telegram-канал
+      </h2>
+      <p className="mt-3">
+        Новые работы, процесс изготовления и анонсы — в моём канале:{" "}
+        <a
+          href="https://t.me/uniceramics"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-zinc-900 underline hover:text-zinc-700"
+        >
+          @uniceramics
+        </a>
+      </p>
 
       {/* Реквизиты — в карточке, чтобы было удобно копировать */}
       <h2 className="mt-10 text-xl font-semibold text-zinc-900">Реквизиты</h2>
@@ -70,7 +78,6 @@ export default function ContactsPage() {
           Самозанятый, плательщик налога на профессиональный доход
         </p>
         <p className="mt-3">ИНН: 026706506184</p>
-        <p>Регион регистрации: Республика Башкортостан</p>
       </div>
 
       {/* Адрес для возвратов */}
@@ -83,7 +90,7 @@ export default function ContactsPage() {
         востребования.
       </p>
       <p className="mt-3 text-sm text-zinc-500">
-        Перед отправкой товара на возврат, пожалуйста, свяжитесь с мастером —
+        Перед отправкой товара на возврат, пожалуйста, свяжитесь со мной —
         чтобы согласовать причину возврата и убедиться, что товар получит
         корректную обработку.
       </p>

@@ -9,7 +9,7 @@ import type { Metadata } from "next";
 import { CheckoutClient } from "./CheckoutClient";
 
 export const metadata: Metadata = {
-  title: "Оформление заказа — Мастерская Аскара",
+  title: "Оформление заказа — Керамическая мастерская Аскара",
   description:
     "Оформление заказа на штампы для керамики, текстурные ролики и инструменты.",
 };

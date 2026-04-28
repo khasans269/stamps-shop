@@ -4,7 +4,7 @@ export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center bg-zinc-50 px-6 text-center">
       <p className="mb-4 text-sm uppercase tracking-widest text-zinc-500">
-        Мастерская Аскара
+        Керамическая мастерская Аскара
       </p>
       <h1 className="mb-6 max-w-3xl text-4xl font-bold leading-tight text-zinc-900 md:text-6xl">
         Штампы и инструменты для&nbsp;керамики
