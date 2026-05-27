@@ -59,6 +59,31 @@ const MIN_ORDER_TOTAL = 500;
 const MAX_ITEMS = 50; // защита от мусорных заказов
 const MAX_FIELD_LEN = 1000; // защита от мусорных запросов
 
+// Разрешённые источники запросов (заголовок Origin). Браузер ставит его
+// автоматически при POST-запросе с другого сайта; боты, шлющие напрямую
+// curl-ом, его обычно НЕ ставят. Это не панацея, но отрезает ленивых.
+//
+// На localhost — пускаем (разработка). На *.vercel.app — пускаем (прод и
+// preview-деплои). Когда подключим свой домен, добавим его сюда отдельной
+// проверкой ниже.
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    // Базовая защита: только https (кроме локалки). На localhost http ок.
+    if (hostname === "localhost") {
+      return protocol === "http:" || protocol === "https:";
+    }
+    if (protocol !== "https:") return false;
+    if (hostname.endsWith(".vercel.app")) return true;
+    // TODO: когда появится свой домен — добавить здесь:
+    // if (hostname === "stamps.example.ru") return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // ── Хелперы ─────────────────────────────────────────────────────────────────
 
 // Сгенерировать читаемый номер заказа: ДДММГГ-NNNN.
@@ -335,6 +360,17 @@ async function sendToSheets(orderId: string, order: IncomingOrder): Promise<void
 // ── Сам обработчик POST /api/checkout ───────────────────────────────────────
 
 export async function POST(request: Request) {
+  // 1) Origin-проверка. Браузерные запросы с нашего сайта проходят, а
+  //    «голый» POST с evil.com или curl без Origin — отсекается. Это
+  //    дешёвая защита от случайного злоупотребления чужими ботами.
+  const origin = request.headers.get("origin");
+  if (!isAllowedOrigin(origin)) {
+    return NextResponse.json(
+      { ok: false, error: "Запрос не разрешён" },
+      { status: 403 }
+    );
+  }
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -343,6 +379,24 @@ export async function POST(request: Request) {
       { ok: false, error: "Не удалось разобрать JSON тела запроса" },
       { status: 400 }
     );
+  }
+
+  // 2) Honeypot. Поле "website" есть только в скрытом инпуте на форме —
+  //    реальный пользователь его не видит и оно остаётся пустым. Если
+  //    оно непустое, это почти наверняка спам-бот, заполнивший все поля.
+  //    Возвращаем "200 OK" с фейковым orderId, чтобы бот не понял, что
+  //    его раскусили, и не стал перебирать обходные пути.
+  if (
+    payload &&
+    typeof payload === "object" &&
+    typeof (payload as { website?: unknown }).website === "string" &&
+    (payload as { website: string }).website.trim().length > 0
+  ) {
+    return NextResponse.json({
+      ok: true,
+      orderId: generateOrderId(),
+      channels: { telegram: false, sheets: false },
+    });
   }
 
   const validation = validateOrder(payload);

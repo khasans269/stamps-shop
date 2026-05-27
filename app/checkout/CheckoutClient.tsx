@@ -112,6 +112,10 @@ export function CheckoutClient() {
   const [address, setAddress] = useState("");
   const [comment, setComment] = useState("");
   const [agree, setAgree] = useState(false);
+  // Honeypot: скрытое поле "website". Реальные пользователи его не видят
+  // и не трогают, а спам-боты, которые тупо заполняют все input — заполняют.
+  // На сервере непустое значение → запрос молча отвергается.
+  const [website, setWebsite] = useState("");
 
   // Ошибки валидации по полям. Заполняются при попытке отправки.
   // null — поле ещё не валидировалось / прошло валидацию.
@@ -179,6 +183,10 @@ export function CheckoutClient() {
     // в ответе — поэтому здесь его нет.
     const normalizedTelegram = normalizeTelegram(telegram);
     const requestBody = {
+      // Honeypot: имитирует обычное поле формы. Сервер увидит непустое
+      // значение → молча "удачно" ответит без сохранения. Боты подумают,
+      // что заказ принят, и не будут долбить повторно.
+      website,
       contact: {
         name: name.trim(),
         phone: phone.trim(),
@@ -275,6 +283,35 @@ export function CheckoutClient() {
       </p>
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-8">
+        {/* ── Honeypot ────────────────────────────────────────────────
+            Скрытое поле "website". Визуально вынесено за экран, выключено
+            из табуляции и автозаполнения — у настоящего пользователя
+            оно всегда останется пустым. А обычные боты заполняют все
+            <input> подряд, и сервер их по этому полю и поймает. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: "auto",
+            width: 1,
+            height: 1,
+            overflow: "hidden",
+          }}
+        >
+          <label>
+            Сайт (не заполнять)
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </label>
+        </div>
+
         {/* ── Контактные данные ──────────────────────────────────────── */}
         <fieldset className="flex flex-col gap-4">
           <legend className="mb-2 text-xl font-semibold text-zinc-900">
