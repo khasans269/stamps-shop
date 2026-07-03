@@ -25,14 +25,6 @@ export function Footer() {
             <ul className="flex flex-col gap-2">
               <li>
                 <Link
-                  href="/faq"
-                  className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
-                >
-                  Вопросы и ответы
-                </Link>
-              </li>
-              <li>
-                <Link
                   href="/contacts"
                   className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
                 >

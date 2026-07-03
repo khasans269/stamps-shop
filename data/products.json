@@ -25,7 +25,10 @@
       "category": "alphabets-cyrillic",
       "description": "Набор базовых штампов «Для понедельников» — простой, разборчивый шрифт без украшений. Универсальные заглавные буквы кириллицы высотой 8 мм — то, что нужно, когда не до изысков. В наборе 31 буква и два дополнительных штампа с точками и черточкой для Й и Ё. Подходит для подписи авторских работ, декорирования изделий из глины.",
       "images": [
-        "/images/products/bdp8/bazovyy-dlya-ponedelnikov-1.jpg"
+        "/images/products/bdp8/1.jpg",
+        "/images/products/bdp8/3.jpg",
+        "/images/products/bdp8/4.jpg",
+        "/images/products/bdp8/5.jpg"
       ],
       "inStock": true,
       "itemsInSet": 35,
@@ -42,7 +45,7 @@
       "description": "Набор штампов с кириллическим алфавитом, высота символа 5 мм. 33 буквы и знаки препинания. Идеально для создания мелких надписей на керамике.",
       "images": [
         "/images/products/bdp5/1.jpg",
-        "/images/products/vasilisa/vasilisa-prekrasnaya-2.jpg",
+        "/images/products/bdp5/2.jpg",
         "/images/products/bdp5/3.jpg"
       ],
       "inStock": true
@@ -50,14 +53,15 @@
     {
       "id": "p004",
       "slug": "Monday8",
-      "name": "Алфавит «Бейз Мандей» 8мм",
+      "name": "Алфавит «Base Monday» 8мм",
       "price": 690,
       "category": "alphabets-latin",
-      "description": "Описание.",
+      "description": "Набор базовых штампов «Base Monday» — простой, разборчивый шрифт без украшений. Универсальные заглавные буквы кириллицы высотой 8 мм — то, что нужно, когда не до изысков. В наборе 26 букв. Подходит для подписи авторских работ, декорирования изделий из глины.",
       "images": [
         "/images/products/basemonday8/bm1.jpg"
       ],
-      "inStock": true
+      "inStock": true,
+      "hidden": false
     },
     {
       "id": "p005",
@@ -66,8 +70,15 @@
       "price": 950,
       "category": "tools",
       "description": "Сито для процеживания глазурей, садится в паз пластикового стаканчика(0,5л; 89мм), очень удобно использовать. Размер ячейки 0,16х0,16мм (~mesh 100) Сетка из нержавеющей стали, обод из пластика, крепится на винтах. Подходит для  для прозрачек и однотонных глазурей, а также для эффектарок без слишком крупных частиц .",
-      "inStock": false
-     },
+      "images": [
+        "/images/products/sito/1.jpg",
+        "/images/products/sito/2.jpg",
+        "/images/products/sito/3.jpg",
+        "/images/products/sito/4.jpg"
+      ],
+      "inStock": true,
+      "hidden": false
+    },
     {
       "id": "p006",
       "slug": "sito-mesh35",
@@ -75,8 +86,42 @@
       "price": 950,
       "category": "tools",
       "description": "Сито из нержавеющей стали, садится в паз пластикового стаканчика(0,5л; 89мм), очень удобно использовать. Размер ячейки 0,5х0,5мм (~mesh 35) Сетка из нержавеющей стали, обод из пластика, крепится на винтах. ",
-      "inStock": false
-     }
+      "images": [
+        "/images/products/sito/21.jpg"
+      ],
+      "inStock": false,
+      "hidden": false
+
+    },
+    {
+      "id": "p007",
+      "slug": "tsiklya01",
+      "name": "«Цикля №01»",
+      "price": 950,
+      "category": "tools",
+      "description": "Цикля для гончарного круга. Высота 175мм, толщина 5мм, 5 канавок. Можно мыть при температуре до 70°.",
+      "images": [
+        "/images/products/tsikli/01/2.jpg",
+        "/images/products/tsikli/02/1.jpg",
+        "/images/products/tsikli/02/3.jpg"
+      ],
+      "inStock": true
+    },
+    {
+      "id": "p008",
+      "slug": "tsiklya02",
+      "name": "«Цикля №02»",
+      "price": 950,
+      "category": "tools",
+      "description": "Цикля для гончарного круга. Высота 175мм, толщина 5мм, 7 канавок. Можно мыть при температуре до 70°.",
+      "images": [
+        "/images/products/tsikli/02/1.jpg",
+        "/images/products/tsikli/02/2.jpg",
+        "/images/products/tsikli/02/3.jpg"
+      ],
+      "inStock": true,
+      "hidden": false
+    }
 
   ]
 }

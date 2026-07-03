@@ -1,23 +1,17 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import productsData from "@/data/products.json";
-import type { Product } from "@/types";
+import { findVisibleProduct, visibleProducts } from "@/lib/products";
 import { AddToCartButton } from "@/components/product/AddToCartButton";
 import { ProductGallery } from "@/components/product/ProductGallery";
-
-// ─── Утилита ────────────────────────────────────────────────────────────────
-
-function findProduct(slug: string): Product | undefined {
-  return (productsData.products as Product[]).find((p) => p.slug === slug);
-}
 
 // ─── generateStaticParams ───────────────────────────────────────────────────
 // Говорит Next.js: «собери эти URL на этапе build».
 // Без этого в production страницы рендерились бы динамически при каждом запросе.
+// Скрытые товары сюда не попадают — у них не будет своей страницы.
 
 export function generateStaticParams() {
-  return productsData.products.map((p) => ({ slug: p.slug }));
+  return visibleProducts.map((p) => ({ slug: p.slug }));
 }
 
 // ─── Metadata ───────────────────────────────────────────────────────────────
@@ -29,7 +23,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const product = findProduct(slug);
+  const product = findVisibleProduct(slug);
   return {
     title: product ? product.name : "Товар не найден",
   };
@@ -43,7 +37,7 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const product = findProduct(slug);
+  const product = findVisibleProduct(slug);
 
   // Если slug не совпал ни с одним товаром — отдаём стандартную 404-страницу.
   if (!product) {

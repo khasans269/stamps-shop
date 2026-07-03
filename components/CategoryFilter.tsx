@@ -1,11 +1,10 @@
 import Link from "next/link";
-import productsData from "@/data/products.json";
 import {
-  CATEGORY_NAMES_SHORT,
-  CATEGORY_ORDER,
-  type Category,
-  type Product,
-} from "@/types";
+  visibleCategories,
+  visibleCountByCategory,
+  visibleProducts,
+} from "@/lib/products";
+import { CATEGORY_NAMES_SHORT, type Category } from "@/types";
 
 // Серверный компонент: рендерится на сервере, никаких "use client" не надо.
 // Принимает active — текущую активную категорию или null для вкладки «Все».
@@ -21,20 +20,9 @@ interface Props {
   active: Category | null;
 }
 
-// Считаем количество товаров в каждой категории один раз на модуль —
-// эти данные статичны на этапе билда (products.json не меняется в рантайме).
-const allProducts = productsData.products as Product[];
-const totalCount = allProducts.length;
-const countByCategory: Record<Category, number> = {
-  "alphabets-cyrillic": 0,
-  "alphabets-latin": 0,
-  patterns: 0,
-  rollers: 0,
-  tools: 0,
-};
-for (const product of allProducts) {
-  countByCategory[product.category] += 1;
-}
+// Счётчики и список категорий берём из lib/products — там уже учтены
+// скрытые товары (hidden) и отброшены пустые категории.
+const totalCount = visibleProducts.length;
 
 export function CategoryFilter({ active }: Props) {
   return (
@@ -44,12 +32,12 @@ export function CategoryFilter({ active }: Props) {
       className="mb-8 flex flex-wrap gap-2"
     >
       <Chip href="/catalog" label="Все" count={totalCount} isActive={active === null} />
-      {CATEGORY_ORDER.map((category) => (
+      {visibleCategories.map((category) => (
         <Chip
           key={category}
           href={`/catalog/${category}`}
           label={CATEGORY_NAMES_SHORT[category]}
-          count={countByCategory[category]}
+          count={visibleCountByCategory[category]}
           isActive={active === category}
         />
       ))}

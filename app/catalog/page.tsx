@@ -1,12 +1,7 @@
 import Link from "next/link";
 import { ProductCard } from "@/components/ProductCard";
 import { CategoryFilter } from "@/components/CategoryFilter";
-import productsData from "@/data/products.json";
-import type { Product } from "@/types";
-
-// Импортируем JSON с товарами. TypeScript сам понимает структуру.
-// Приводим типы, чтобы получить полный автокомплит по полям Product.
-const products = productsData.products as Product[];
+import { visibleProducts as products } from "@/lib/products";
 
 export const metadata = {
   title: "Каталог — Штампы для керамики",

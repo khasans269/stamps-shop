@@ -4,14 +4,13 @@ import type { Metadata } from "next";
 import { ProductCard } from "@/components/ProductCard";
 import { CategoryFilter } from "@/components/CategoryFilter";
 import { TagFilter } from "@/components/TagFilter";
-import productsData from "@/data/products.json";
+import { visibleProducts } from "@/lib/products";
 import {
   CATEGORY_NAMES,
   CATEGORY_ORDER,
   TAG_NAMES,
   TAG_ORDER,
   type Category,
-  type Product,
   type Tag,
 } from "@/types";
 
@@ -35,8 +34,6 @@ function parseTag(input: string | undefined): Tag | null {
     ? (input as Tag)
     : null;
 }
-
-const allProducts = productsData.products as Product[];
 
 // ── generateStaticParams ───────────────────────────────────────────────────
 // На этапе сборки Next.js заранее отрендерит страницы для каждой категории —
@@ -98,7 +95,8 @@ export default async function CategoryPage({
   }
 
   // Сначала отбираем по категории, потом по тегу (если задан).
-  let products = allProducts.filter((p) => p.category === parsed);
+  // visibleProducts уже без скрытых товаров.
+  let products = visibleProducts.filter((p) => p.category === parsed);
   if (parsedTag) {
     products = products.filter((p) => p.tags?.includes(parsedTag));
   }

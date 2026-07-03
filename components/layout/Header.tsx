@@ -21,10 +21,10 @@ export function Header() {
             Каталог
           </Link>
           <Link
-            href="/faq"
+            href="/contacts"
             className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
           >
-            FAQ
+            Контакты
           </Link>
         </nav>
 
