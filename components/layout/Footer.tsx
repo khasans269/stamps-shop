@@ -28,7 +28,7 @@ export function Footer() {
                   href="/contacts"
                   className="text-sm text-zinc-500 transition-colors hover:text-zinc-900"
                 >
-                  Контакты и реквизиты
+                  Контакты
                 </Link>
               </li>
               <li>
