@@ -27,7 +27,7 @@ export function ProductGallery({
   // Если фото вообще нет — показываем placeholder.
   if (images.length === 0) {
     return (
-      <div className="aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200">
+      <div className="aspect-[3/4] overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200">
         <div className="flex h-full w-full items-center justify-center text-zinc-400">
           Нет фото
         </div>
@@ -42,7 +42,7 @@ export function ProductGallery({
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="Открыть фото на весь экран"
-        className="relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200"
+        className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200"
       >
         <Image
           src={images[activeIndex]}
