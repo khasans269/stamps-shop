@@ -13,6 +13,12 @@ const allProducts = productsData.products as Product[];
 // но первичная блокировка кнопки "К оформлению" — на странице корзины.
 const MIN_ORDER_TOTAL = 500;
 
+// Ключ, под которым храним черновик формы в localStorage. Тот же префикс
+// "stamps-shop-", что и у корзины — так все данные магазина в одном месте.
+// Нужно, чтобы введённые данные не терялись, если человек ушёл в каталог
+// и вернулся на чекаут. Стираем после успешного заказа.
+const FORM_STORAGE_KEY = "stamps-shop-checkout-form";
+
 // Способы доставки. Используются и как value (передаём дальше), и как
 // человекочитаемая подпись.
 const DELIVERY_OPTIONS = [
@@ -142,6 +148,57 @@ export function CheckoutClient() {
     }
   }, [orderRows.length, router]);
 
+  // ── Память формы ──────────────────────────────────────────────────────────
+  // Восстанавливаем ранее введённые данные при возврате на чекаут. Читаем
+  // localStorage один раз при маунте — поля не слетают, если человек ушёл в
+  // каталог и вернулся. Согласие (agree) намеренно НЕ восстанавливаем: его
+  // лучше подтверждать заново при каждом оформлении.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(FORM_STORAGE_KEY);
+      if (!stored) return;
+      const d = JSON.parse(stored) as Partial<{
+        name: string;
+        phone: string;
+        email: string;
+        telegram: string;
+        delivery: DeliveryValue;
+        address: string;
+        comment: string;
+      }>;
+      // setState внутри эффекта здесь оправдан: это одноразовое
+      // восстановление данных из localStorage при маунте (localStorage
+      // недоступен на сервере, поэтому нельзя сделать это в initial state).
+      // Тот же приём используется для корзины в CartContext.
+      /* eslint-disable react-hooks/set-state-in-effect */
+      if (d.name) setName(d.name);
+      if (d.phone) setPhone(d.phone);
+      if (d.email) setEmail(d.email);
+      if (d.telegram) setTelegram(d.telegram);
+      // Проверяем, что сохранённый способ доставки всё ещё существует —
+      // на случай, если список DELIVERY_OPTIONS в будущем изменится.
+      if (d.delivery && DELIVERY_OPTIONS.some((o) => o.value === d.delivery)) {
+        setDelivery(d.delivery);
+      }
+      if (d.address) setAddress(d.address);
+      if (d.comment) setComment(d.comment);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch {
+      // Повреждённые данные — просто начинаем с пустой формы.
+    }
+  }, []);
+
+  // Сохраняем черновик формы при каждом изменении полей. Данные лежат на
+  // устройстве покупателя; после успешного заказа мы их стираем (см. submit).
+  useEffect(() => {
+    const draft = { name, phone, email, telegram, delivery, address, comment };
+    try {
+      localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      // localStorage может быть недоступен (приватный режим) — не критично.
+    }
+  }, [name, phone, email, telegram, delivery, address, comment]);
+
   function validate(): boolean {
     const next: typeof errors = {};
 
@@ -252,6 +309,14 @@ export function CheckoutClient() {
       } catch {
         // если sessionStorage недоступен — success-страница покажет
         // заглушку с номером заказа из URL.
+      }
+
+      // Заказ принят — черновик формы больше не нужен, стираем его, чтобы
+      // следующий заказ начинался с чистой формы (и данные не лежали зря).
+      try {
+        localStorage.removeItem(FORM_STORAGE_KEY);
+      } catch {
+        // localStorage недоступен — ничего страшного, черновик перезапишется.
       }
 
       // Корзину НЕ чистим тут — это сделает success-страница, чтобы
