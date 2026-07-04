@@ -11,11 +11,13 @@ export function Footer() {
           {/* Колонка 1: о магазине */}
           <div>
             <p className="mb-3 font-semibold text-zinc-900">
-              Штампы для керамики
+              Товары для керамистов
             </p>
             <p className="text-sm leading-relaxed text-zinc-500">
-              Алфавиты, штампы с узорами, текстурные ролики и инструменты для
-              керамистов. Прямые продажи от мастера.
+              От любителей до студий. 
+            </p>
+            <p className="text-sm leading-relaxed text-zinc-500">
+              Прямые продажи от мастера
             </p>
           </div>
 
