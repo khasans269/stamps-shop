@@ -422,9 +422,24 @@ export function validateOrder(
       ? commentRaw.trim().slice(0, MAX_FIELD_LEN)
       : null;
 
-  // Доставка и итог считаются на сервере: при самовывозе — 0, иначе фикс
-  // из env. Итог — сумма товаров + доставка.
-  const deliveryFee = isPickup ? 0 : getDeliveryFlatFee();
+  // Стоимость доставки:
+  //  • самовывоз — 0;
+  //  • Яндекс ПВЗ — цена, посчитанная виджетом Яндекса на клиенте
+  //    (санитизируем: неотрицательное число в разумных пределах). Если
+  //    значение кривое — откатываемся на фикс из env;
+  //  • остальные способы — фикс из env.
+  let deliveryFee: number;
+  if (isPickup) {
+    deliveryFee = 0;
+  } else if (method === YANDEX_PVZ_METHOD) {
+    const dp = Number(delivery.deliveryPrice);
+    deliveryFee =
+      Number.isFinite(dp) && dp >= 0 && dp <= 100000
+        ? Math.round(dp)
+        : getDeliveryFlatFee();
+  } else {
+    deliveryFee = getDeliveryFlatFee();
+  }
   const grandTotal = itemsTotal + deliveryFee;
 
   return {

@@ -21,5 +21,11 @@ export default function CheckoutPage() {
   // покупателю и посчитать итог. Роут /api/payment/create всё равно
   // пересчитает сумму сам из той же переменной — клиенту не доверяем.
   const deliveryFee = getDeliveryFlatFee();
-  return <CheckoutClient deliveryFee={deliveryFee} />;
+  // Станция отгрузки Яндекс Доставки для виджета ПВЗ. Не секрет (виджет всё
+  // равно раскрывает её в браузере), поэтому спокойно передаём в клиент.
+  // Если не задана — виджет не активируется, доставка «сообщу отдельно».
+  const yandexStationId = process.env.YANDEX_DELIVERY_SOURCE_STATION_ID ?? "";
+  return (
+    <CheckoutClient deliveryFee={deliveryFee} yandexStationId={yandexStationId} />
+  );
 }
