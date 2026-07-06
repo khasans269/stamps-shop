@@ -142,9 +142,12 @@ async function handle(request: Request): Promise<Response> {
     }
     return NextResponse.json({ message: "Unknown action" }, { status: 400 });
   } catch (err) {
-    console.error("[cdek/service] ошибка:", err);
+    // Текст ошибки кладём в ответ, чтобы было видно причину в Network/логах
+    // (сообщения СДЭК не содержат секретов). При желании позже убрать detail.
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[cdek/service] ошибка:", detail);
     return NextResponse.json(
-      { message: "CDEK service error" },
+      { message: "CDEK service error", detail },
       { status: 502 }
     );
   }
