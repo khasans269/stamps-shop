@@ -84,7 +84,10 @@ function normalizeTelegram(input: string): string {
   return cleaned ? `@${cleaned}` : "";
 }
 
-export function CheckoutClient() {
+// deliveryFee — фикс-стоимость доставки в рублях, приходит с сервера
+// (env DELIVERY_FLAT_FEE) через checkout/page.tsx. Показываем покупателю
+// и включаем в итог к оплате. Настоящий пересчёт всё равно на сервере.
+export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
   const router = useRouter();
   const { items, totalCount } = useCart();
 
@@ -106,6 +109,10 @@ export function CheckoutClient() {
     (sum, { product, quantity }) => sum + product.price * quantity,
     0
   );
+
+  // Итог к оплате = товары + фикс доставки. Доставку прибавляем только
+  // если она задана (> 0); иначе показываем как есть.
+  const grandTotal = totalPrice + deliveryFee;
 
   // ── Состояние формы ─────────────────────────────────────────────────────
   const [name, setName] = useState("");
@@ -265,40 +272,44 @@ export function CheckoutClient() {
         quantity,
         sum: product.price * quantity,
       })),
-      total: totalPrice,
+      // Итог сервер посчитает сам (товары + фикс доставки), клиентскому
+      // значению не доверяет. Шлём справочно, чтобы был в теле запроса.
+      total: grandTotal,
     };
 
     try {
-      const res = await fetch("/api/checkout", {
+      // Создаём платёж в ЮKassa. В ответе — ссылка на оплату
+      // (confirmationUrl), куда мы перенаправим покупателя.
+      const res = await fetch("/api/payment/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
 
-      // Тип ответа сервера: { ok, orderId?, error?, channels? }.
-      const data = (await res
-        .json()
-        .catch(() => ({}))) as {
+      const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         orderId?: string;
+        paymentId?: string;
+        confirmationUrl?: string;
         error?: string;
       };
 
-      if (!res.ok || !data.ok || !data.orderId) {
+      if (!res.ok || !data.ok || !data.orderId || !data.confirmationUrl) {
         setSubmitError(
           data.error ??
-            "Не удалось отправить заявку. Попробуйте ещё раз через минуту или напишите мне напрямую."
+            "Не удалось перейти к оплате. Попробуйте ещё раз через минуту или напишите мне напрямую."
         );
         setSubmitting(false);
         return;
       }
 
-      // Заказ успешно принят — сохраняем полную копию (вместе с
-      // серверным orderId) в sessionStorage, чтобы /checkout/success
-      // показал детали без повторного запроса.
+      // Сохраняем копию заказа в sessionStorage, чтобы страница успеха
+      // (куда ЮKassa вернёт после оплаты) показала сводку. sessionStorage
+      // переживает переход на ЮKassa и обратно, пока вкладка открыта.
       const orderForSuccess = {
         ...requestBody,
         orderId: data.orderId,
+        deliveryFee,
         createdAt: new Date().toISOString(),
       };
       try {
@@ -307,24 +318,18 @@ export function CheckoutClient() {
           JSON.stringify(orderForSuccess)
         );
       } catch {
-        // если sessionStorage недоступен — success-страница покажет
-        // заглушку с номером заказа из URL.
+        // sessionStorage недоступен — success-страница покажет заглушку.
       }
 
-      // Заказ принят — черновик формы больше не нужен, стираем его, чтобы
-      // следующий заказ начинался с чистой формы (и данные не лежали зря).
-      try {
-        localStorage.removeItem(FORM_STORAGE_KEY);
-      } catch {
-        // localStorage недоступен — ничего страшного, черновик перезапишется.
-      }
+      // Черновик формы НЕ стираем здесь: оплата ещё не прошла. Если
+      // покупатель вернётся с ЮKassa не оплатив — форма останется заполненной.
+      // Черновик и корзину чистит страница успеха.
 
-      // Корзину НЕ чистим тут — это сделает success-страница, чтобы
-      // при возврате назад человек не увидел внезапно пустую корзину.
-      router.push(`/checkout/success?order=${data.orderId}`);
+      // Уходим на страницу оплаты ЮKassa (внешний переход — не router.push).
+      window.location.href = data.confirmationUrl;
     } catch (err) {
-      // Сюда попадаем при сетевой ошибке (нет интернета, CORS, и т.п.).
-      console.error("checkout submit failed", err);
+      // Сетевая ошибка (нет интернета, CORS, и т.п.).
+      console.error("payment create failed", err);
       setSubmitError(
         "Похоже, нет связи с сервером. Проверьте интернет и попробуйте ещё раз."
       );
@@ -535,20 +540,39 @@ export function CheckoutClient() {
               </li>
             ))}
           </ul>
-          <div className="flex items-center justify-between px-4 pt-2">
-            <span className="text-zinc-500">Итого товаров</span>
-            <span className="text-2xl font-semibold">
-              {totalPrice.toLocaleString("ru-RU")} ₽
-            </span>
+          <div className="flex flex-col gap-1 px-4 pt-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500">Товары</span>
+              <span className="font-medium">
+                {totalPrice.toLocaleString("ru-RU")} ₽
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-500">Доставка</span>
+              <span className="font-medium">
+                {deliveryFee > 0
+                  ? `${deliveryFee.toLocaleString("ru-RU")} ₽`
+                  : "рассчитаю отдельно"}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2">
+              <span className="text-zinc-500">Итого к оплате</span>
+              <span className="text-2xl font-semibold">
+                {grandTotal.toLocaleString("ru-RU")} ₽
+              </span>
+            </div>
           </div>
           {errors.total && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               {errors.total}
             </p>
           )}
-          <p className="px-4 text-xs text-zinc-500">
-            Стоимость доставки рассчитываю отдельно, после согласования адреса.
-          </p>
+          {deliveryFee > 0 && (
+            <p className="px-4 text-xs text-zinc-500">
+              Доставка — фиксированная сумма, включена в итог. Оплата
+              товара и доставки проходит одним платежом.
+            </p>
+          )}
         </fieldset>
 
         {/* ── Согласие ───────────────────────────────────────────────── */}
@@ -602,12 +626,14 @@ export function CheckoutClient() {
           disabled={submitting}
           className="w-full rounded-2xl bg-zinc-900 px-6 py-4 text-base font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:self-start"
         >
-          {submitting ? "Отправляю заявку…" : "Отправить заявку"}
+          {submitting
+            ? "Перехожу к оплате…"
+            : `Перейти к оплате${grandTotal > 0 ? ` — ${grandTotal.toLocaleString("ru-RU")} ₽` : ""}`}
         </button>
 
         <p className="text-xs text-zinc-500">
-          После отправки я свяжусь с вами в течение рабочего дня — уточним
-          стоимость доставки, готовый итог и пришлю реквизиты для оплаты.
+          Оплата проходит на защищённой странице ЮKassa. После оплаты я получу
+          заказ и свяжусь с вами, чтобы согласовать отправку.
         </p>
       </form>
     </div>

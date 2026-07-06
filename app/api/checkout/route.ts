@@ -1,368 +1,27 @@
-// Серверный роут оформления заказа.
+// Серверный роут «заявка без оплаты» — старый флоу оформления заказа.
 //
-// Когда пользователь нажимает "Отправить заявку" на /checkout, фронт
-// отправляет сюда POST с данными заказа. Этот файл — то, что выполняется
-// на сервере (на Vercel). Он:
-//   1) валидирует входные данные,
-//   2) генерирует номер заказа,
-//   3) параллельно шлёт в Telegram и в Google Sheets,
-//   4) возвращает ответ фронту.
-//
-// Секреты (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SHEETS_WEBHOOK_URL)
-// хранятся как переменные окружения в Vercel. Браузер их не видит — это
-// одна из причин делать API-роут вместо прямого фетча в Telegram с фронта.
+// С появлением оплаты через ЮKassa основная форма шлёт заказ в
+// /api/payment/create (создание платежа). Этот роут оставлен как запасной
+// путь: он просто принимает заявку и шлёт её в Telegram + Google Sheets,
+// без приёма денег. Вся общая логика (валидация, отправка) вынесена в
+// lib/order.ts, поэтому здесь только «склейка».
 //
 // Файл живёт в app/api/checkout/route.ts по правилу App Router:
 //   POST /api/checkout → экспорт async function POST(request)
 
 import { NextResponse } from "next/server";
+import {
+  generateOrderId,
+  isAllowedOrigin,
+  sendToSheets,
+  sendToTelegram,
+  validateOrder,
+} from "@/lib/order";
 
-// На Node-runtime гарантированно есть fetch и process.env. На Edge-runtime
-// тоже работает, но на Edge сложнее логировать; оставляем дефолтный Node.
 export const runtime = "nodejs";
 
-// ── Типы запроса ────────────────────────────────────────────────────────────
-// Дублируем shape с фронта, чтобы не тащить общий тип. Серверный роут —
-// граница доверия, поэтому тип здесь нужен в первую очередь для парсинга
-// и валидации, а не для шаринга с UI.
-
-interface IncomingItem {
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  sum: number;
-}
-
-interface IncomingOrder {
-  contact: {
-    name: string;
-    phone: string;
-    email: string;
-    // Опциональный Telegram-ник в формате "@username" (нормализуется
-    // на фронте). Если человек ничего не указал — null.
-    telegram: string | null;
-  };
-  delivery: {
-    method: string;
-    methodLabel: string;
-    address: string;
-  };
-  comment: string | null;
-  items: IncomingItem[];
-  total: number;
-}
-
-// ── Константы ───────────────────────────────────────────────────────────────
-
-const MIN_ORDER_TOTAL = 500;
-const MAX_ITEMS = 50; // защита от мусорных заказов
-const MAX_FIELD_LEN = 1000; // защита от мусорных запросов
-
-// Разрешённые источники запросов (заголовок Origin). Браузер ставит его
-// автоматически при POST-запросе с другого сайта; боты, шлющие напрямую
-// curl-ом, его обычно НЕ ставят. Это не панацея, но отрезает ленивых.
-//
-// На localhost — пускаем (разработка). На *.vercel.app — пускаем (прод и
-// preview-деплои). Когда подключим свой домен, добавим его сюда отдельной
-// проверкой ниже.
-function isAllowedOrigin(origin: string | null): boolean {
-  if (!origin) return false;
-  try {
-    const { hostname, protocol } = new URL(origin);
-    // Базовая защита: только https (кроме локалки). На localhost http ок.
-    if (hostname === "localhost") {
-      return protocol === "http:" || protocol === "https:";
-    }
-    if (protocol !== "https:") return false;
-    if (hostname.endsWith(".vercel.app")) return true;
-    // TODO: когда появится свой домен — добавить здесь:
-    // if (hostname === "stamps.example.ru") return true;
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// ── Хелперы ─────────────────────────────────────────────────────────────────
-
-// Сгенерировать читаемый номер заказа: ДДММГГ-NNNN.
-// Делается на сервере, чтобы все системы (Telegram, Sheets, success-страница)
-// получили один и тот же номер.
-function generateOrderId(): string {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yy = String(d.getFullYear()).slice(2);
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `${dd}${mm}${yy}-${rand}`;
-}
-
-// Полу-валидация телефона/email: отвергаем совсем мусорное.
-// Полная валидация уже на фронте, здесь — последняя линия обороны.
-function isValidPhone(value: string): boolean {
-  const digits = value.replace(/\D/g, "");
-  return digits.length === 10 || digits.length === 11;
-}
-
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-// Безопасное получение строки из произвольного значения. Если пришло не
-// строка — возвращаем пустую (дальше провалит валидацию длины).
-function asString(v: unknown): string {
-  return typeof v === "string" ? v : "";
-}
-
-// Экранируем для Telegram MarkdownV2. В Telegram эти символы зарезервированы;
-// если их не экранировать, парсер сообщения упадёт и Telegram вернёт 400.
-// Список взят из официальных доков Telegram Bot API.
-function escapeMd(text: string): string {
-  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
-}
-
-// Форматируем сообщение для Telegram. Markdown сделан так, чтобы каждый
-// блок легко читался в мобильном клиенте — короткие строки, ключи жирным.
-function formatTelegramMessage(orderId: string, order: IncomingOrder): string {
-  const lines: string[] = [];
-
-  lines.push(`🛒 *Новый заказ* №${escapeMd(orderId)}`);
-  lines.push("");
-  lines.push("*Контакт*");
-  lines.push(`Имя: ${escapeMd(order.contact.name)}`);
-  lines.push(`Телефон: ${escapeMd(order.contact.phone)}`);
-  lines.push(`Email: ${escapeMd(order.contact.email)}`);
-  if (order.contact.telegram) {
-    lines.push(`Telegram: ${escapeMd(order.contact.telegram)}`);
-  }
-  lines.push("");
-  lines.push("*Доставка*");
-  lines.push(`Способ: ${escapeMd(order.delivery.methodLabel)}`);
-  lines.push(`Адрес: ${escapeMd(order.delivery.address)}`);
-  if (order.comment) {
-    lines.push("");
-    lines.push("*Комментарий*");
-    lines.push(escapeMd(order.comment));
-  }
-  lines.push("");
-  lines.push("*Состав*");
-  for (const item of order.items) {
-    const sum = item.sum.toLocaleString("ru-RU");
-    const price = item.price.toLocaleString("ru-RU");
-    lines.push(
-      `• ${escapeMd(item.name)} — ${item.quantity} × ${escapeMd(price)} ₽ \\= ${escapeMd(sum)} ₽`
-    );
-  }
-  lines.push("");
-  lines.push(`*Итого:* ${escapeMd(order.total.toLocaleString("ru-RU"))} ₽`);
-
-  return lines.join("\n");
-}
-
-// ── Валидация ───────────────────────────────────────────────────────────────
-
-// Проверяем, что входные данные имеют ожидаемую форму. Если что-то не так
-// — возвращаем человекочитаемое сообщение об ошибке. Если всё ок — null.
-function validateOrder(data: unknown): { error: string } | { order: IncomingOrder } {
-  if (!data || typeof data !== "object") {
-    return { error: "Некорректный формат запроса" };
-  }
-  const obj = data as Record<string, unknown>;
-
-  const contact = obj.contact as Record<string, unknown> | undefined;
-  const delivery = obj.delivery as Record<string, unknown> | undefined;
-  const items = obj.items as unknown[] | undefined;
-
-  if (!contact || !delivery || !Array.isArray(items)) {
-    return { error: "Не хватает обязательных секций" };
-  }
-
-  const name = asString(contact.name).trim();
-  const phone = asString(contact.phone).trim();
-  const email = asString(contact.email).trim();
-  if (
-    name.length < 2 ||
-    name.length > MAX_FIELD_LEN ||
-    !isValidPhone(phone) ||
-    !isValidEmail(email)
-  ) {
-    return { error: "Контактные данные не прошли проверку" };
-  }
-
-  // Telegram-ник опционален. Принимаем строку или null. На клиенте
-  // нормализован (@username); ещё раз почистим на всякий случай и
-  // отрежем по разумной длине.
-  const tgRaw = contact.telegram;
-  let telegram: string | null = null;
-  if (typeof tgRaw === "string") {
-    const cleaned = tgRaw
-      .trim()
-      .replace(/^@+/, "")
-      .replace(/[^A-Za-z0-9_]/g, "")
-      .slice(0, 64);
-    telegram = cleaned ? `@${cleaned}` : null;
-  }
-
-  const method = asString(delivery.method).trim();
-  const methodLabel = asString(delivery.methodLabel).trim();
-  const address = asString(delivery.address).trim();
-  if (
-    method.length === 0 ||
-    methodLabel.length === 0 ||
-    address.length < 5 ||
-    address.length > MAX_FIELD_LEN
-  ) {
-    return { error: "Данные доставки не прошли проверку" };
-  }
-
-  if (items.length === 0 || items.length > MAX_ITEMS) {
-    return { error: "Некорректный состав заказа" };
-  }
-
-  const cleanItems: IncomingItem[] = [];
-  let computedTotal = 0;
-  for (const raw of items) {
-    if (!raw || typeof raw !== "object") {
-      return { error: "Некорректная позиция в заказе" };
-    }
-    const it = raw as Record<string, unknown>;
-    const productId = asString(it.productId).trim();
-    const itemName = asString(it.name).trim();
-    const price = Number(it.price);
-    const quantity = Number(it.quantity);
-    const sum = Number(it.sum);
-    if (
-      !productId ||
-      !itemName ||
-      !Number.isFinite(price) ||
-      price < 0 ||
-      !Number.isInteger(quantity) ||
-      quantity <= 0 ||
-      !Number.isFinite(sum) ||
-      sum < 0
-    ) {
-      return { error: "Позиция заказа содержит некорректные значения" };
-    }
-    cleanItems.push({ productId, name: itemName, price, quantity, sum });
-    computedTotal += price * quantity;
-  }
-
-  if (computedTotal < MIN_ORDER_TOTAL) {
-    return { error: `Минимальная сумма заказа — ${MIN_ORDER_TOTAL} ₽` };
-  }
-
-  // Итоговая сумма от клиента не доверена — пересчитываем сами.
-  const total = computedTotal;
-
-  const commentRaw = obj.comment;
-  const comment =
-    typeof commentRaw === "string" && commentRaw.trim().length > 0
-      ? commentRaw.trim().slice(0, MAX_FIELD_LEN)
-      : null;
-
-  return {
-    order: {
-      contact: { name, phone, email, telegram },
-      delivery: { method, methodLabel, address },
-      comment,
-      items: cleanItems,
-      total,
-    },
-  };
-}
-
-// ── Отправка в Telegram ─────────────────────────────────────────────────────
-
-async function sendToTelegram(orderId: string, order: IncomingOrder): Promise<void> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) {
-    throw new Error("TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не заданы");
-  }
-
-  const text = formatTelegramMessage(orderId, order);
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: "MarkdownV2",
-      disable_web_page_preview: true,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Telegram ${res.status}: ${body.slice(0, 300)}`);
-  }
-}
-
-// ── Отправка в Google Sheets ────────────────────────────────────────────────
-
-async function sendToSheets(orderId: string, order: IncomingOrder): Promise<void> {
-  const rawUrl = process.env.SHEETS_WEBHOOK_URL;
-  if (!rawUrl) {
-    throw new Error("SHEETS_WEBHOOK_URL не задан");
-  }
-  // На всякий случай убираем пробелы и переводы строки, которые
-  // легко прилипают при копи-пасте URL в дашборд Vercel.
-  const url = rawUrl.trim();
-
-  // Apps Script у Аскара ждёт вложенную структуру: data.contact.name,
-  // data.delivery.methodLabel, data.items как массив. Поэтому шлём в
-  // том же виде, в котором собрали заказ (без «расплющивания»).
-  const payload = {
-    orderId,
-    createdAt: new Date().toISOString(),
-    contact: order.contact,
-    delivery: order.delivery,
-    comment: order.comment ?? "",
-    items: order.items,
-    total: order.total,
-  };
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    // Apps Script любит редиректы — позволим fetch'у идти за ними.
-    redirect: "follow",
-  });
-
-  // Apps Script Web App может вернуть HTML с ошибкой и при этом
-  // прислать 200 — поэтому всегда читаем тело и логируем кусок.
-  // Если тело — JSON с {result: "success"}, считаем ок.
-  const bodyText = await res.text().catch(() => "");
-  if (!res.ok) {
-    throw new Error(`Sheets HTTP ${res.status}: ${bodyText.slice(0, 500)}`);
-  }
-
-  // Если в ответе явно есть слово "error" или это HTML-страница
-  // ("<!doctype" / "<html"), считаем это сбоем — Apps Script не
-  // отработал doPost, а отдал страницу авторизации/ошибки.
-  const lower = bodyText.toLowerCase();
-  if (
-    lower.includes("<!doctype") ||
-    lower.includes("<html") ||
-    lower.includes("\"error\"") ||
-    lower.includes("script function not found")
-  ) {
-    throw new Error(
-      `Sheets вернул не JSON-успех (host=${new URL(url).host}): ${bodyText.slice(0, 500)}`
-    );
-  }
-}
-
-// ── Сам обработчик POST /api/checkout ───────────────────────────────────────
-
 export async function POST(request: Request) {
-  // 1) Origin-проверка. Браузерные запросы с нашего сайта проходят, а
-  //    «голый» POST с evil.com или curl без Origin — отсекается. Это
-  //    дешёвая защита от случайного злоупотребления чужими ботами.
+  // 1) Origin-проверка — отсекаем «голые» POST-запросы с чужих сайтов.
   const origin = request.headers.get("origin");
   if (!isAllowedOrigin(origin)) {
     return NextResponse.json(
@@ -381,22 +40,15 @@ export async function POST(request: Request) {
     );
   }
 
-  // 2) Honeypot. Поле "website" есть только в скрытом инпуте на форме —
-  //    реальный пользователь его не видит и оно остаётся пустым. Если
-  //    оно непустое, это почти наверняка спам-бот, заполнивший все поля.
-  //    Возвращаем "200 OK" с фейковым orderId, чтобы бот не понял, что
-  //    его раскусили, и не стал перебирать обходные пути.
+  // 2) Honeypot — скрытое поле "website". У реального пользователя пустое,
+  //    бот его заполняет. Возвращаем фейковый успех, чтобы бот не понял.
   if (
     payload &&
     typeof payload === "object" &&
     typeof (payload as { website?: unknown }).website === "string" &&
     (payload as { website: string }).website.trim().length > 0
   ) {
-    return NextResponse.json({
-      ok: true,
-      orderId: generateOrderId(),
-      channels: { telegram: false, sheets: false },
-    });
+    return NextResponse.json({ ok: true, orderId: generateOrderId() });
   }
 
   const validation = validateOrder(payload);
@@ -409,17 +61,15 @@ export async function POST(request: Request) {
   const order = validation.order;
   const orderId = generateOrderId();
 
-  // Шлём в оба канала параллельно. Если один упал — второй должен
-  // успеть. allSettled даёт нам результат каждого по отдельности.
+  // Шлём в оба канала параллельно. Если один упал — второй должен успеть.
   const [telegramResult, sheetsResult] = await Promise.allSettled([
-    sendToTelegram(orderId, order),
-    sendToSheets(orderId, order),
+    sendToTelegram(orderId, order, { paid: false }),
+    sendToSheets(orderId, order, { action: "create", status: "заявка (без оплаты)" }),
   ]);
 
   const telegramOk = telegramResult.status === "fulfilled";
   const sheetsOk = sheetsResult.status === "fulfilled";
 
-  // Логируем падения в серверный лог Vercel — там видно по вкладке Logs.
   if (!telegramOk) {
     console.error(
       `[checkout] Telegram failed for order ${orderId}:`,
@@ -433,9 +83,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Если оба канала упали — это уже не пройдёт. Возвращаем 502 и
-  // ничего не записываем как успешный заказ; пользователь увидит
-  // ошибку и сможет переотправить заявку.
+  // Оба канала упали — заявка не принята, пользователь переотправит.
   if (!telegramOk && !sheetsOk) {
     return NextResponse.json(
       {
@@ -447,15 +95,9 @@ export async function POST(request: Request) {
     );
   }
 
-  // Иначе — заказ принят. Если один из каналов упал, всё равно
-  // считаем заявку принятой — у Аскара есть данные хотя бы в одном
-  // месте. Поле channels помогает позже понять, что именно дошло.
   return NextResponse.json({
     ok: true,
     orderId,
-    channels: {
-      telegram: telegramOk,
-      sheets: sheetsOk,
-    },
+    channels: { telegram: telegramOk, sheets: sheetsOk },
   });
 }

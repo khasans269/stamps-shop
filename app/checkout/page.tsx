@@ -7,6 +7,7 @@
 
 import type { Metadata } from "next";
 import { CheckoutClient } from "./CheckoutClient";
+import { getDeliveryFlatFee } from "@/lib/order";
 
 export const metadata: Metadata = {
   title: "Оформление заказа — Керамическая мастерская Аскара",
@@ -15,5 +16,10 @@ export const metadata: Metadata = {
 };
 
 export default function CheckoutPage() {
-  return <CheckoutClient />;
+  // Фикс-стоимость доставки читаем на сервере (из env DELIVERY_FLAT_FEE) —
+  // единый источник правды. Прокидываем в клиентскую форму, чтобы показать
+  // покупателю и посчитать итог. Роут /api/payment/create всё равно
+  // пересчитает сумму сам из той же переменной — клиенту не доверяем.
+  const deliveryFee = getDeliveryFlatFee();
+  return <CheckoutClient deliveryFee={deliveryFee} />;
 }

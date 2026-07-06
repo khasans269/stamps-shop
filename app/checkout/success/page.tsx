@@ -8,9 +8,9 @@ import { Suspense } from "react";
 import { SuccessClient } from "./SuccessClient";
 
 export const metadata: Metadata = {
-  title: "Заявка принята — Керамическая мастерская Аскара",
+  title: "Заказ оформлен — Керамическая мастерская Аскара",
   description:
-    "Спасибо за заказ! Я свяжусь с вами в течение рабочего дня для уточнения деталей.",
+    "Спасибо за заказ! Как только оплата подтвердится, я соберу и отправлю заказ.",
 };
 
 export default function CheckoutSuccessPage() {

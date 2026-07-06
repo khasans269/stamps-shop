@@ -33,6 +33,9 @@ interface OrderPayload {
     quantity: number;
     sum: number;
   }>;
+  // Фикс-стоимость доставки, ₽. Может отсутствовать в старых записях.
+  deliveryFee?: number;
+  // Итог к оплате (товары + доставка), ₽.
   total: number;
 }
 
@@ -85,6 +88,13 @@ export function SuccessClient() {
     const flagKey = `stamps-shop-cleared-${order.orderId}`;
     if (sessionStorage.getItem(flagKey) === "1") return;
     clearCart();
+    // Черновик формы больше не нужен — заказ оформлен. Чистим здесь (а не
+    // при переходе на оплату), чтобы при отмене оплаты форма сохранялась.
+    try {
+      localStorage.removeItem("stamps-shop-checkout-form");
+    } catch {
+      // localStorage недоступен — не критично.
+    }
     sessionStorage.setItem(flagKey, "1");
     // ВАЖНО: clearCart переводит товары в pending-удаление. Чтобы они
     // не "вернулись", когда пользователь увидит UndoToast и нажмёт
@@ -110,7 +120,7 @@ export function SuccessClient() {
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <h1 className="mb-4 text-3xl font-bold">Спасибо за заказ!</h1>
         <p className="mb-8 text-zinc-500">
-          Я получил вашу заявку и свяжусь с вами в течение рабочего дня.
+          Как только оплата подтвердится, я получу заказ и свяжусь с вами.
           {orderIdFromUrl && (
             <>
               <br />
@@ -137,7 +147,7 @@ export function SuccessClient() {
           ✓
         </div>
         <h1 className="text-2xl font-bold text-zinc-900 md:text-3xl">
-          Спасибо, {order.contact.name.split(" ")[0]}! Заявка принята
+          Спасибо, {order.contact.name.split(" ")[0]}! Заказ оформлен
         </h1>
         <p className="mt-2 text-sm text-zinc-600">
           Номер заказа: <b>{order.orderId}</b>
@@ -152,9 +162,8 @@ export function SuccessClient() {
             1
           </span>
           <span>
-            Я связываюсь с вами в течение рабочего дня по телефону{" "}
-            <b>{order.contact.phone}</b> или почте{" "}
-            <b>{order.contact.email}</b> — уточняю детали.
+            Как только оплата подтвердится, я получу заказ. Чек придёт на почту{" "}
+            <b>{order.contact.email}</b>.
           </span>
         </li>
         <li className="flex gap-3">
@@ -162,8 +171,8 @@ export function SuccessClient() {
             2
           </span>
           <span>
-            Согласовываем итоговую стоимость с учётом доставки и присылаю
-            ссылку для оплаты или реквизиты СБП.
+            Собираю и упаковываю ваш заказ. Если понадобится уточнить детали —
+            свяжусь по телефону <b>{order.contact.phone}</b>.
           </span>
         </li>
         <li className="flex gap-3">
@@ -171,8 +180,8 @@ export function SuccessClient() {
             3
           </span>
           <span>
-            После получения оплаты отправляю заказ службой{" "}
-            <b>{order.delivery.methodLabel}</b> и присылаю трек-номер.
+            Отправляю заказ службой <b>{order.delivery.methodLabel}</b> и
+            присылаю трек-номер.
           </span>
         </li>
       </ol>
@@ -200,8 +209,16 @@ export function SuccessClient() {
             </li>
           ))}
         </ul>
+        {typeof order.deliveryFee === "number" && order.deliveryFee > 0 && (
+          <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-sm">
+            <span className="text-zinc-500">Доставка</span>
+            <span className="font-medium">
+              {order.deliveryFee.toLocaleString("ru-RU")} ₽
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between bg-zinc-50 px-4 py-3">
-          <span className="text-zinc-500">Итого</span>
+          <span className="text-zinc-500">Итого оплачено</span>
           <span className="text-xl font-semibold">
             {order.total.toLocaleString("ru-RU")} ₽
           </span>
