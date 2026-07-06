@@ -25,7 +25,16 @@ const DELIVERY_OPTIONS = [
   { value: "cdek", label: "СДЭК (до пункта выдачи)" },
   { value: "yandex", label: "Яндекс Доставка (курьер или ПВЗ)" },
   { value: "ozon", label: "Озон Доставка (до пункта выдачи)" },
+  { value: "pickup", label: "Самовывоз в СПб (ст. м. Пионерская) — бесплатно" },
 ] as const;
+
+// Значение способа «самовывоз». Должно совпадать с PICKUP_METHOD на сервере
+// (lib/order.ts). При самовывозе доставка бесплатна и адрес не нужен.
+const PICKUP_VALUE = "pickup";
+
+// Что показываем покупателю при выборе самовывоза (и кладём в сводку заказа).
+const PICKUP_INFO =
+  "Санкт-Петербург, ст. м. Пионерская. Точный адрес и время выдачи согласую с вами по телефону после оформления.";
 
 type DeliveryValue = (typeof DELIVERY_OPTIONS)[number]["value"];
 
@@ -110,9 +119,6 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
     0
   );
 
-  // Итог к оплате = товары + фикс доставки. Доставку прибавляем только
-  // если она задана (> 0); иначе показываем как есть.
-  const grandTotal = totalPrice + deliveryFee;
 
   // ── Состояние формы ─────────────────────────────────────────────────────
   const [name, setName] = useState("");
@@ -129,6 +135,12 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
   // и не трогают, а спам-боты, которые тупо заполняют все input — заполняют.
   // На сервере непустое значение → запрос молча отвергается.
   const [website, setWebsite] = useState("");
+
+  // Самовывоз: доставка бесплатна, адрес не требуется. Итог к оплате
+  // считаем с учётом этого. Настоящий пересчёт — всё равно на сервере.
+  const isPickup = delivery === PICKUP_VALUE;
+  const effectiveDeliveryFee = isPickup ? 0 : deliveryFee;
+  const grandTotal = totalPrice + effectiveDeliveryFee;
 
   // Ошибки валидации по полям. Заполняются при попытке отправки.
   // null — поле ещё не валидировалось / прошло валидацию.
@@ -181,7 +193,8 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
       if (d.name) setName(d.name);
       if (d.phone) setPhone(d.phone);
       if (d.email) setEmail(d.email);
-      if (d.telegram) setTelegram(d.telegram);
+      // В state ник без "@" (слева фиксированная "@"), поэтому чистим.
+      if (d.telegram) setTelegram(d.telegram.replace(/^@+/, ""));
       // Проверяем, что сохранённый способ доставки всё ещё существует —
       // на случай, если список DELIVERY_OPTIONS в будущем изменится.
       if (d.delivery && DELIVERY_OPTIONS.some((o) => o.value === d.delivery)) {
@@ -218,7 +231,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
     if (!isValidEmail(email)) {
       next.email = "Введите корректный email";
     }
-    if (address.trim().length < 5) {
+    if (!isPickup && address.trim().length < 5) {
       next.address = "Укажите адрес или пункт выдачи";
     }
     if (!agree) {
@@ -262,7 +275,9 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
       delivery: {
         method: delivery,
         methodLabel: deliveryLabel,
-        address: address.trim(),
+        // При самовывозе адрес не вводится — кладём инфо о пункте (сервер
+        // всё равно подставит канонический адрес самовывоза сам).
+        address: isPickup ? PICKUP_INFO : address.trim(),
       },
       comment: comment.trim() || null,
       items: orderRows.map(({ product, quantity }) => ({
@@ -309,7 +324,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
       const orderForSuccess = {
         ...requestBody,
         orderId: data.orderId,
-        deliveryFee,
+        deliveryFee: effectiveDeliveryFee,
         createdAt: new Date().toISOString(),
       };
       try {
@@ -399,7 +414,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
-              placeholder="Например, Анна Иванова"
+              placeholder="Например, Вася Пупкин"
             />
           </Field>
 
@@ -439,14 +454,20 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
             label="Telegram"
             hint="Необязательно. Если укажете — напишу вам в Telegram, не нужно будет ждать звонка."
           >
-            <input
-              type="text"
-              autoComplete="off"
-              value={telegram}
-              onChange={(e) => setTelegram(e.target.value)}
-              className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
-              placeholder="@username"
-            />
+            {/* Фиксированная "@" слева, чтобы её не нужно было вводить и
+                нельзя было случайно стереть. В state храним ник без "@" —
+                нормализуем и добавляем "@" уже при отправке. */}
+            <div className="flex w-full items-center rounded-xl border border-zinc-300 transition focus-within:border-zinc-900">
+              <span className="select-none pl-4 text-zinc-500">@</span>
+              <input
+                type="text"
+                autoComplete="off"
+                value={telegram}
+                onChange={(e) => setTelegram(e.target.value.replace(/^@+/, ""))}
+                className="w-full rounded-xl bg-transparent py-3 pl-1 pr-4 outline-none"
+                placeholder="username"
+              />
+            </div>
           </Field>
         </fieldset>
 
@@ -482,25 +503,35 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
                 </label>
               ))}
             </div>
-            <p className="text-xs text-zinc-500">
-              Точную стоимость доставки сообщу при подтверждении заказа — она
-              зависит от вашего города и веса посылки.
-            </p>
+            {!isPickup && (
+              <p className="text-xs text-zinc-500">
+                Доставка — фиксированная сумма, включена в итог. Или выберите
+                самовывоз в СПб — бесплатно.
+              </p>
+            )}
           </div>
 
-          <Field
-            label="Адрес доставки или пункт выдачи"
-            error={errors.address}
-            hint="Город, улица, дом, квартира — или адрес ПВЗ выбранной службы."
-            required
-          >
-            <textarea
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="min-h-[80px] w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
-              placeholder="Москва, ул. Тверская, 1, кв. 5 — или СДЭК г. Казань, ул. Баумана, 10"
-            />
-          </Field>
+          {isPickup ? (
+            // Самовывоз: адрес вводить не нужно — показываем адрес пункта.
+            <div className="rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+              <p className="mb-1 font-medium text-zinc-900">Пункт самовывоза</p>
+              <p>{PICKUP_INFO}</p>
+            </div>
+          ) : (
+            <Field
+              label="Адрес доставки или пункт выдачи"
+              error={errors.address}
+              hint="Город, улица, дом, квартира — или адрес ПВЗ выбранной службы."
+              required
+            >
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="min-h-[80px] w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
+                placeholder="Москва, ул. Тверская, 1, кв. 5 — или СДЭК г. Казань, ул. Баумана, 10"
+              />
+            </Field>
+          )}
 
           <Field
             label="Комментарий"
@@ -550,9 +581,11 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500">Доставка</span>
               <span className="font-medium">
-                {deliveryFee > 0
-                  ? `${deliveryFee.toLocaleString("ru-RU")} ₽`
-                  : "рассчитаю отдельно"}
+                {isPickup
+                  ? "бесплатно (самовывоз)"
+                  : deliveryFee > 0
+                    ? `${deliveryFee.toLocaleString("ru-RU")} ₽`
+                    : "рассчитаю отдельно"}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2">
@@ -567,10 +600,9 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
               {errors.total}
             </p>
           )}
-          {deliveryFee > 0 && (
+          {!isPickup && deliveryFee > 0 && (
             <p className="px-4 text-xs text-zinc-500">
-              Доставка — фиксированная сумма, включена в итог. Оплата
-              товара и доставки проходит одним платежом.
+              Оплата товара и доставки проходит одним платежом.
             </p>
           )}
         </fieldset>

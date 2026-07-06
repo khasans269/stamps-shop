@@ -31,6 +31,25 @@ import { getPayment } from "@/lib/yookassa";
 
 export const runtime = "nodejs";
 
+// Best-effort защита от повторной обработки. ЮKassa при сбое повторяет
+// уведомление — чтобы не задваивать сообщение в Telegram и строку в
+// таблице, помним уже обработанные платежи в памяти процесса. Память живёт,
+// пока экземпляр функции «тёплый» (повторы обычно приходят в те же минуты и
+// попадают в тот же экземпляр). Полную гарантию дала бы база — её тут нет.
+// Повторный вызов updateOrderStatusInSheets безвреден (ставит тот же статус),
+// главное — не слать второе уведомление в Telegram.
+const processedPayments = new Map<string, number>();
+const PROCESSED_TTL_MS = 30 * 60 * 1000; // 30 минут
+
+function alreadyProcessed(paymentId: string): boolean {
+  const now = Date.now();
+  // Попутно чистим старое, чтобы Map не рос бесконечно.
+  for (const [id, ts] of processedPayments) {
+    if (now - ts > PROCESSED_TTL_MS) processedPayments.delete(id);
+  }
+  return processedPayments.has(paymentId);
+}
+
 // Диапазоны IP-адресов, с которых ЮKassa шлёт уведомления (из их доков).
 // Проверка «на скорую руку»: главная защита — обратный GET статуса ниже.
 // IPv4 — в CIDR или как одиночные адреса; IPv6 — по префиксу.
@@ -141,6 +160,13 @@ export async function POST(request: Request) {
 
   // Реагируем на подтверждённый статус, а не на event из тела.
   if (payment.status === "succeeded" && payment.paid) {
+    // Повтор того же успешного платежа — не шлём уведомление второй раз.
+    if (alreadyProcessed(paymentId)) {
+      console.log(`[payment/webhook] Платёж ${paymentId} уже обработан — пропуск`);
+      return NextResponse.json({ ok: true });
+    }
+    processedPayments.set(paymentId, Date.now());
+
     const summary: PaidSummary = {
       name: payment.metadata?.customerName ?? "—",
       phone: payment.metadata?.customerPhone ?? "—",

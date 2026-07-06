@@ -13,11 +13,20 @@
 // переводим только на границе с ЮKassa (см. lib/yookassa.ts), а рубли с
 // копейками показываем лишь в UI. Так меньше риска ошибок округления.
 
+import { allProducts } from "@/lib/products";
+
 // ── Константы ───────────────────────────────────────────────────────────────
 
 export const MIN_ORDER_TOTAL = 500; // минимальная сумма товаров, ₽
 export const MAX_ITEMS = 50; // защита от мусорных заказов
 export const MAX_FIELD_LEN = 1000; // защита от мусорных запросов
+
+// Способ доставки «самовывоз». При нём доставка бесплатна, а адрес
+// покупателю вводить не нужно — показываем адрес пункта. Значение должно
+// совпадать с value в DELIVERY_OPTIONS на форме (CheckoutClient.tsx).
+export const PICKUP_METHOD = "pickup";
+export const PICKUP_ADDRESS =
+  "Самовывоз: Санкт-Петербург, ст. м. Пионерская (адрес и время согласую по телефону)";
 
 // Фикс-стоимость доставки в рублях. Берётся из переменной окружения
 // DELIVERY_FLAT_FEE (её задаёт продавец в Vercel), чтобы менять цену
@@ -105,8 +114,14 @@ export function generateOrderId(): string {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yy = String(d.getFullYear()).slice(2);
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `${dd}${mm}${yy}-${rand}`;
+  // Время до секунды + 2 случайные цифры. Совпадение возможно лишь у двух
+  // заказов в одну и ту же секунду с одинаковым «хвостом» — практически
+  // исключено. Полную гарантию уникальности дала бы только база данных.
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  const rand = Math.floor(10 + Math.random() * 90); // 2 цифры
+  return `${dd}${mm}${yy}-${hh}${mi}${ss}-${rand}`;
 }
 
 // Полу-валидация телефона/email: отвергаем совсем мусорное. Полная
@@ -335,13 +350,15 @@ export function validateOrder(
 
   const method = asString(delivery.method).trim();
   const methodLabel = asString(delivery.methodLabel).trim();
-  const address = asString(delivery.address).trim();
-  if (
-    method.length === 0 ||
-    methodLabel.length === 0 ||
-    address.length < 5 ||
-    address.length > MAX_FIELD_LEN
-  ) {
+  let address = asString(delivery.address).trim();
+  const isPickup = method === PICKUP_METHOD;
+  if (method.length === 0 || methodLabel.length === 0) {
+    return { error: "Данные доставки не прошли проверку" };
+  }
+  if (isPickup) {
+    // Самовывоз: адрес вводить не нужно — подставляем адрес пункта.
+    address = PICKUP_ADDRESS;
+  } else if (address.length < 5 || address.length > MAX_FIELD_LEN) {
     return { error: "Данные доставки не прошли проверку" };
   }
 
@@ -357,22 +374,20 @@ export function validateOrder(
     }
     const it = raw as Record<string, unknown>;
     const productId = asString(it.productId).trim();
-    const itemName = asString(it.name).trim();
-    const price = Number(it.price);
     const quantity = Number(it.quantity);
-    if (
-      !productId ||
-      !itemName ||
-      !Number.isFinite(price) ||
-      price < 0 ||
-      !Number.isInteger(quantity) ||
-      quantity <= 0
-    ) {
+    if (!productId || !Number.isInteger(quantity) || quantity <= 0) {
       return { error: "Позиция заказа содержит некорректные значения" };
     }
-    // Сумму позиции считаем сами — клиентскому sum не доверяем.
+    // Цену и название берём из products.json по productId — НЕ доверяем
+    // тому, что прислал браузер. Иначе покупатель мог бы подменить цену в
+    // запросе и оплатить меньше. Это ключевая проверка целостности заказа.
+    const product = allProducts.find((p) => p.id === productId);
+    if (!product) {
+      return { error: "Товар не найден" };
+    }
+    const price = product.price;
     const sum = price * quantity;
-    cleanItems.push({ productId, name: itemName, price, quantity, sum });
+    cleanItems.push({ productId, name: product.name, price, quantity, sum });
     itemsTotal += sum;
   }
 
@@ -386,8 +401,9 @@ export function validateOrder(
       ? commentRaw.trim().slice(0, MAX_FIELD_LEN)
       : null;
 
-  // Доставка и итог считаются на сервере: доставка — из env, итог — сумма.
-  const deliveryFee = getDeliveryFlatFee();
+  // Доставка и итог считаются на сервере: при самовывозе — 0, иначе фикс
+  // из env. Итог — сумма товаров + доставка.
+  const deliveryFee = isPickup ? 0 : getDeliveryFlatFee();
   const grandTotal = itemsTotal + deliveryFee;
 
   return {
