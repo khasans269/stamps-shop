@@ -321,7 +321,10 @@ export function CheckoutClient({
         apiKey: mapsApiKey,
         servicePath: "/api/cdek/service",
         from: "Санкт-Петербург",
-        defaultLocation: "Санкт-Петербург",
+        // Координаты СПб [широта, долгота], а не строкой — чтобы виджет НЕ
+        // геокодил стартовую точку через Яндекс (иначе падает, если у ключа
+        // нет доступного из браузера геокодера). Карта стартует по точке.
+        defaultLocation: [59.9386, 30.3141],
         hideDeliveryOptions: { door: true }, // только пункты выдачи (ПВЗ)
         goods: [
           {
