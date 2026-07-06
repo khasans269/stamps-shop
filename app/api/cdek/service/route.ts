@@ -21,9 +21,10 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// Публичные тестовые креды СДЭК (их же публикует СДЭК для песочницы).
-const TEST_ACCOUNT = "EMscd6r9JnFiQ3bLoyjJY6eM78JrJceI";
-const TEST_SECRET = "PjLZkKBHEiLK3YsjtNrt3TGNG0ahs3kG";
+// Публичные тестовые креды СДЭК для песочницы (api.edu.cdek.ru). СДЭК их
+// периодически меняет — актуальные берём из официального SDK.
+const TEST_ACCOUNT = "wqGwiQx0gg8mLtiEKsUinjVSICCjtTEP";
+const TEST_SECRET = "RmAmgvSgSl1yirlz9QupbzOJVqhCxcP5";
 const TEST_BASE = "https://api.edu.cdek.ru/v2";
 
 function config() {
