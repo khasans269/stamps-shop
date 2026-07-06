@@ -28,10 +28,10 @@ export const PICKUP_METHOD = "pickup";
 export const PICKUP_ADDRESS =
   "Самовывоз: Санкт-Петербург, ст. м. Пионерская (адрес и время согласую по телефону)";
 
-// Способ «Яндекс ПВЗ» — с онлайн-расчётом стоимости. Значение совпадает с
-// YANDEX_PVZ_VALUE на форме (CheckoutClient.tsx). Для него /api/payment/create
-// пересчитывает цену доставки на сервере по pointId.
-export const YANDEX_PVZ_METHOD = "yandex-pvz";
+// Способ «СДЭК ПВЗ» — с онлайн-расчётом стоимости через виджет СДЭК.
+// Значение совпадает с CDEK_PVZ_VALUE на форме (CheckoutClient.tsx). Цену
+// считает виджет на клиенте, сервер её санитизирует (см. validateOrder).
+export const CDEK_PVZ_METHOD = "cdek-pvz";
 
 // Фикс-стоимость доставки в рублях. Берётся из переменной окружения
 // DELIVERY_FLAT_FEE (её задаёт продавец в Vercel), чтобы менять цену
@@ -424,14 +424,14 @@ export function validateOrder(
 
   // Стоимость доставки:
   //  • самовывоз — 0;
-  //  • Яндекс ПВЗ — цена, посчитанная виджетом Яндекса на клиенте
+  //  • СДЭК ПВЗ — цена, посчитанная виджетом СДЭК на клиенте
   //    (санитизируем: неотрицательное число в разумных пределах). Если
   //    значение кривое — откатываемся на фикс из env;
   //  • остальные способы — фикс из env.
   let deliveryFee: number;
   if (isPickup) {
     deliveryFee = 0;
-  } else if (method === YANDEX_PVZ_METHOD) {
+  } else if (method === CDEK_PVZ_METHOD) {
     const dp = Number(delivery.deliveryPrice);
     deliveryFee =
       Number.isFinite(dp) && dp >= 0 && dp <= 100000

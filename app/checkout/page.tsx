@@ -21,11 +21,9 @@ export default function CheckoutPage() {
   // покупателю и посчитать итог. Роут /api/payment/create всё равно
   // пересчитает сумму сам из той же переменной — клиенту не доверяем.
   const deliveryFee = getDeliveryFlatFee();
-  // Станция отгрузки Яндекс Доставки для виджета ПВЗ. Не секрет (виджет всё
-  // равно раскрывает её в браузере), поэтому спокойно передаём в клиент.
-  // Если не задана — виджет не активируется, доставка «сообщу отдельно».
-  const yandexStationId = process.env.YANDEX_DELIVERY_SOURCE_STATION_ID ?? "";
-  return (
-    <CheckoutClient deliveryFee={deliveryFee} yandexStationId={yandexStationId} />
-  );
+  // Ключ Яндекс.Карт для виджета ПВЗ СДЭК (виджет рисует карту на Яндекс.
+  // Картах). Ключ ограничен HTTP Referrer, поэтому его норм передавать в
+  // браузер. Если не задан — виджет не покажется, доставка «сообщу отдельно».
+  const mapsApiKey = process.env.YANDEX_MAPS_API_KEY ?? "";
+  return <CheckoutClient deliveryFee={deliveryFee} mapsApiKey={mapsApiKey} />;
 }
