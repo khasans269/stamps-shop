@@ -22,15 +22,26 @@ const FORM_STORAGE_KEY = "stamps-shop-checkout-form";
 // Способы доставки. Используются и как value (передаём дальше), и как
 // человекочитаемая подпись.
 const DELIVERY_OPTIONS = [
-  { value: "cdek", label: "СДЭК (до пункта выдачи)" },
-  { value: "yandex", label: "Яндекс Доставка (курьер или ПВЗ)" },
-  { value: "ozon", label: "Озон Доставка (до пункта выдачи)" },
+  { value: "yandex-pvz", label: "Яндекс Доставка — пункт выдачи (расчёт онлайн)" },
+  { value: "cdek", label: "СДЭК (стоимость сообщу отдельно)" },
+  { value: "ozon", label: "Озон Доставка (стоимость сообщу отдельно)" },
   { value: "pickup", label: "Самовывоз в СПб (ст. м. Пионерская) — бесплатно" },
 ] as const;
 
 // Значение способа «самовывоз». Должно совпадать с PICKUP_METHOD на сервере
 // (lib/order.ts). При самовывозе доставка бесплатна и адрес не нужен.
 const PICKUP_VALUE = "pickup";
+
+// Значение способа «Яндекс ПВЗ» — с онлайн-расчётом стоимости. Должно
+// совпадать с YANDEX_PVZ_METHOD на сервере (lib/order.ts).
+const YANDEX_PVZ_VALUE = "yandex-pvz";
+
+// Пункт выдачи, как его отдаёт /api/delivery/points.
+interface PvzPoint {
+  id: string;
+  name: string;
+  address: string;
+}
 
 // Что показываем покупателю при выборе самовывоза (и кладём в сводку заказа).
 const PICKUP_INFO =
@@ -127,7 +138,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
   // Telegram-ник опционален. Храним как ввёл пользователь, нормализуем
   // только перед отправкой (приведём к виду @ник, выкинем мусор).
   const [telegram, setTelegram] = useState("");
-  const [delivery, setDelivery] = useState<DeliveryValue>("cdek");
+  const [delivery, setDelivery] = useState<DeliveryValue>("yandex-pvz");
   const [address, setAddress] = useState("");
   const [comment, setComment] = useState("");
   const [agree, setAgree] = useState(false);
@@ -136,11 +147,39 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
   // На сервере непустое значение → запрос молча отвергается.
   const [website, setWebsite] = useState("");
 
-  // Самовывоз: доставка бесплатна, адрес не требуется. Итог к оплате
-  // считаем с учётом этого. Настоящий пересчёт — всё равно на сервере.
+  // ── Яндекс ПВЗ: поиск пунктов и расчёт стоимости ────────────────────────
+  const [pvzCity, setPvzCity] = useState(""); // адрес/город для поиска ПВЗ
+  const [pvzPoints, setPvzPoints] = useState<PvzPoint[]>([]);
+  const [pvzLoadingPoints, setPvzLoadingPoints] = useState(false);
+  // Онлайн-расчёт недоступен (нет токена/ошибка) — работаем как раньше:
+  // стоимость доставки продавец сообщит отдельно.
+  const [pvzUnavailable, setPvzUnavailable] = useState(false);
+  const [pvzMessage, setPvzMessage] = useState<string | null>(null);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [pvzPrice, setPvzPrice] = useState<number | null>(null);
+  const [pvzPriceLoading, setPvzPriceLoading] = useState(false);
+
   const isPickup = delivery === PICKUP_VALUE;
-  const effectiveDeliveryFee = isPickup ? 0 : deliveryFee;
-  const grandTotal = totalPrice + effectiveDeliveryFee;
+  const isYandexPvz = delivery === YANDEX_PVZ_VALUE;
+
+  // Стоимость доставки к показу/итогу:
+  //  • самовывоз — 0;
+  //  • Яндекс ПВЗ — цена от API (пока пункт не выбран — null; если онлайн-
+  //    расчёт недоступен — фикс из env как запасной вариант);
+  //  • остальные способы — фикс из env.
+  let effectiveDeliveryFee: number | null;
+  if (isPickup) effectiveDeliveryFee = 0;
+  else if (isYandexPvz) effectiveDeliveryFee = pvzUnavailable ? deliveryFee : pvzPrice;
+  else effectiveDeliveryFee = deliveryFee;
+
+  const grandTotal = totalPrice + (effectiveDeliveryFee ?? 0);
+
+  // Готовность к оформлению: для Яндекс ПВЗ нужна известная цена (или
+  // включённый запасной вариант, когда онлайн-расчёт недоступен).
+  const pvzReady = !isYandexPvz || pvzUnavailable || pvzPrice !== null;
+
+  // Выбранный пункт (для сводки и отправки).
+  const selectedPoint = pvzPoints.find((p) => p.id === selectedPointId) ?? null;
 
   // Ошибки валидации по полям. Заполняются при попытке отправки.
   // null — поле ещё не валидировалось / прошло валидацию.
@@ -231,7 +270,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
     if (!isValidEmail(email)) {
       next.email = "Введите корректный email";
     }
-    if (!isPickup && address.trim().length < 5) {
+    if (!isPickup && !isYandexPvz && address.trim().length < 5) {
       next.address = "Укажите адрес или пункт выдачи";
     }
     if (!agree) {
@@ -245,10 +284,104 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
     return Object.keys(next).length === 0;
   }
 
+  // Найти пункты выдачи Яндекса по введённому городу/адресу.
+  async function loadPvzPoints() {
+    if (pvzCity.trim().length < 3) {
+      setPvzMessage("Введите город или адрес (хотя бы 3 символа).");
+      return;
+    }
+    setPvzLoadingPoints(true);
+    setPvzMessage(null);
+    setPvzUnavailable(false);
+    setPvzPoints([]);
+    setSelectedPointId(null);
+    setPvzPrice(null);
+    try {
+      const res = await fetch("/api/delivery/points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: pvzCity.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        configured?: boolean;
+        points?: PvzPoint[];
+        message?: string;
+        error?: string;
+      };
+      if (data.configured === false) {
+        setPvzUnavailable(true);
+        setPvzMessage(
+          "Онлайн-расчёт временно недоступен — стоимость доставки сообщу отдельно после оформления."
+        );
+        return;
+      }
+      if (!res.ok || !data.ok) {
+        setPvzMessage(data.error ?? "Не удалось получить пункты. Проверьте адрес.");
+        return;
+      }
+      if (!data.points || data.points.length === 0) {
+        setPvzMessage(data.message ?? "По этому адресу пункты не найдены. Уточните город.");
+        return;
+      }
+      setPvzPoints(data.points);
+    } catch {
+      setPvzMessage("Нет связи с сервером. Попробуйте ещё раз.");
+    } finally {
+      setPvzLoadingPoints(false);
+    }
+  }
+
+  // Выбрать пункт и рассчитать стоимость доставки до него.
+  async function selectPvzPoint(pointId: string) {
+    setSelectedPointId(pointId);
+    setPvzPrice(null);
+    setPvzMessage(null);
+    setPvzPriceLoading(true);
+    try {
+      const res = await fetch("/api/delivery/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pointId,
+          items: orderRows.map(({ product, quantity }) => ({
+            productId: product.id,
+            quantity,
+          })),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        configured?: boolean;
+        price?: number;
+        error?: string;
+      };
+      if (data.configured === false) {
+        setPvzUnavailable(true);
+        setPvzMessage("Онлайн-расчёт временно недоступен — стоимость сообщу отдельно.");
+        return;
+      }
+      if (!res.ok || !data.ok || typeof data.price !== "number") {
+        setPvzMessage(data.error ?? "Не удалось рассчитать стоимость. Выберите другой пункт.");
+        return;
+      }
+      setPvzPrice(data.price);
+    } catch {
+      setPvzMessage("Нет связи с сервером. Попробуйте ещё раз.");
+    } finally {
+      setPvzPriceLoading(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
     if (!validate()) return;
+    // Для Яндекс ПВЗ нельзя оформлять без рассчитанной стоимости.
+    if (isYandexPvz && !pvzUnavailable && (!selectedPointId || pvzPrice === null)) {
+      setSubmitError("Выберите пункт выдачи и дождитесь расчёта стоимости доставки.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -275,9 +408,18 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
       delivery: {
         method: delivery,
         methodLabel: deliveryLabel,
-        // При самовывозе адрес не вводится — кладём инфо о пункте (сервер
-        // всё равно подставит канонический адрес самовывоза сам).
-        address: isPickup ? PICKUP_INFO : address.trim(),
+        // Адрес: для самовывоза — инфо о пункте; для Яндекс ПВЗ — выбранный
+        // пункт (или введённый город, если онлайн-расчёт недоступен); иначе
+        // — введённый адрес.
+        address: isPickup
+          ? PICKUP_INFO
+          : isYandexPvz
+            ? selectedPoint
+              ? `${selectedPoint.name}, ${selectedPoint.address}`
+              : pvzCity.trim()
+            : address.trim(),
+        // id пункта выдачи Яндекса — сервер по нему пересчитает цену доставки.
+        pointId: isYandexPvz ? selectedPointId : null,
       },
       comment: comment.trim() || null,
       items: orderRows.map(({ product, quantity }) => ({
@@ -503,10 +645,16 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
                 </label>
               ))}
             </div>
-            {!isPickup && (
+            {isYandexPvz && (
               <p className="text-xs text-zinc-500">
-                Доставка — фиксированная сумма, включена в итог. Или выберите
-                самовывоз в СПб — бесплатно.
+                Введите город и улицу, выберите пункт выдачи — стоимость
+                доставки посчитается автоматически и войдёт в итог.
+              </p>
+            )}
+            {!isPickup && !isYandexPvz && (
+              <p className="text-xs text-zinc-500">
+                Стоимость доставки сообщу отдельно после оформления. Или
+                выберите Яндекс ПВЗ (расчёт онлайн) либо самовывоз в СПб.
               </p>
             )}
           </div>
@@ -516,6 +664,72 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
             <div className="rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
               <p className="mb-1 font-medium text-zinc-900">Пункт самовывоза</p>
               <p>{PICKUP_INFO}</p>
+            </div>
+          ) : isYandexPvz ? (
+            // Яндекс ПВЗ: вводим город/адрес → показываем пункты → при выборе
+            // считаем стоимость доставки.
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  value={pvzCity}
+                  onChange={(e) => setPvzCity(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
+                  placeholder="Город и улица — например, Казань, Баумана"
+                />
+                <button
+                  type="button"
+                  onClick={loadPvzPoints}
+                  disabled={pvzLoadingPoints}
+                  className="rounded-xl border border-zinc-900 px-4 py-3 text-sm font-medium transition hover:bg-zinc-50 disabled:opacity-60"
+                >
+                  {pvzLoadingPoints ? "Ищу…" : "Показать пункты"}
+                </button>
+              </div>
+
+              {pvzMessage && (
+                <p className="rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-800">
+                  {pvzMessage}
+                </p>
+              )}
+
+              {pvzPoints.length > 0 && (
+                <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
+                  {pvzPoints.map((p) => (
+                    <label
+                      key={p.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition ${
+                        selectedPointId === p.id
+                          ? "border-zinc-900 bg-zinc-50"
+                          : "border-zinc-300 hover:bg-zinc-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="pvz-point"
+                        className="mt-1 h-4 w-4 flex-shrink-0"
+                        checked={selectedPointId === p.id}
+                        onChange={() => selectPvzPoint(p.id)}
+                      />
+                      <span className="text-sm">
+                        <span className="font-medium">{p.name}</span>
+                        <br />
+                        <span className="text-zinc-500">{p.address}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {selectedPointId && !pvzUnavailable && (
+                <p className="text-sm font-medium text-zinc-700">
+                  {pvzPriceLoading
+                    ? "Считаю стоимость доставки…"
+                    : pvzPrice !== null
+                      ? `Стоимость доставки: ${pvzPrice.toLocaleString("ru-RU")} ₽`
+                      : ""}
+                </p>
+              )}
             </div>
           ) : (
             <Field
@@ -583,9 +797,15 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
               <span className="font-medium">
                 {isPickup
                   ? "бесплатно (самовывоз)"
-                  : deliveryFee > 0
-                    ? `${deliveryFee.toLocaleString("ru-RU")} ₽`
-                    : "рассчитаю отдельно"}
+                  : isYandexPvz
+                    ? pvzUnavailable
+                      ? "сообщу отдельно"
+                      : pvzPrice !== null
+                        ? `${pvzPrice.toLocaleString("ru-RU")} ₽`
+                        : "выберите пункт"
+                    : deliveryFee > 0
+                      ? `${deliveryFee.toLocaleString("ru-RU")} ₽`
+                      : "рассчитаю отдельно"}
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between border-t border-zinc-200 pt-2">
@@ -600,7 +820,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
               {errors.total}
             </p>
           )}
-          {!isPickup && deliveryFee > 0 && (
+          {!isPickup && (isYandexPvz ? pvzPrice !== null : deliveryFee > 0) && (
             <p className="px-4 text-xs text-zinc-500">
               Оплата товара и доставки проходит одним платежом.
             </p>
@@ -655,7 +875,7 @@ export function CheckoutClient({ deliveryFee }: { deliveryFee: number }) {
         {/* ── Кнопка отправки ───────────────────────────────────────── */}
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !pvzReady}
           className="w-full rounded-2xl bg-zinc-900 px-6 py-4 text-base font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:self-start"
         >
           {submitting

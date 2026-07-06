@@ -28,6 +28,11 @@ export const PICKUP_METHOD = "pickup";
 export const PICKUP_ADDRESS =
   "Самовывоз: Санкт-Петербург, ст. м. Пионерская (адрес и время согласую по телефону)";
 
+// Способ «Яндекс ПВЗ» — с онлайн-расчётом стоимости. Значение совпадает с
+// YANDEX_PVZ_VALUE на форме (CheckoutClient.tsx). Для него /api/payment/create
+// пересчитывает цену доставки на сервере по pointId.
+export const YANDEX_PVZ_METHOD = "yandex-pvz";
+
 // Фикс-стоимость доставки в рублях. Берётся из переменной окружения
 // DELIVERY_FLAT_FEE (её задаёт продавец в Vercel), чтобы менять цену
 // доставки без правки кода и передеплоя. Если переменная не задана или
@@ -67,6 +72,9 @@ export interface OrderDelivery {
   method: string;
   methodLabel: string;
   address: string;
+  // id пункта выдачи Яндекса (только для способа yandex-pvz). По нему сервер
+  // пересчитывает стоимость доставки. Для остальных способов — null.
+  pointId?: string | null;
 }
 
 export interface IncomingOrder {
@@ -227,6 +235,12 @@ function formatPaidTelegramMessage(orderId: string, s: PaidSummary): string {
   lines.push("");
   lines.push(escapeMd("Полный состав заказа — в таблице заказов (Google Sheets)."));
   lines.push(`ЮKassa payment id: ${escapeMd(s.paymentId)}`);
+  lines.push("");
+  // Автосервис чеков для самозанятых в ЮKassa пока недоступен, поэтому
+  // напоминаем пробить чек вручную в «Мой налог».
+  lines.push(
+    escapeMd(`❗ Не забудь пробить чек в «Мой налог» на ${s.total.toLocaleString("ru-RU")} ₽.`)
+  );
   return lines.join("\n");
 }
 
@@ -362,6 +376,13 @@ export function validateOrder(
     return { error: "Данные доставки не прошли проверку" };
   }
 
+  // id пункта выдачи Яндекса (только для yandex-pvz).
+  const pointIdRaw = delivery.pointId;
+  const pointId =
+    typeof pointIdRaw === "string" && pointIdRaw.trim().length > 0
+      ? pointIdRaw.trim().slice(0, 128)
+      : null;
+
   if (items.length === 0 || items.length > MAX_ITEMS) {
     return { error: "Некорректный состав заказа" };
   }
@@ -409,7 +430,7 @@ export function validateOrder(
   return {
     order: {
       contact: { name, phone, email, telegram },
-      delivery: { method, methodLabel, address },
+      delivery: { method, methodLabel, address, pointId },
       comment,
       items: cleanItems,
       itemsTotal,

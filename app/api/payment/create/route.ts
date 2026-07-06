@@ -20,8 +20,13 @@ import {
   isAllowedOrigin,
   sendToSheets,
   validateOrder,
+  YANDEX_PVZ_METHOD,
 } from "@/lib/order";
 import { createPayment } from "@/lib/yookassa";
+import {
+  calcPickupPrice,
+  isConfigured as isDeliveryConfigured,
+} from "@/lib/yandex-delivery";
 
 export const runtime = "nodejs";
 
@@ -72,6 +77,34 @@ export async function POST(request: Request) {
   }
   const order = validation.order;
   const orderId = generateOrderId();
+
+  // Для Яндекс ПВЗ пересчитываем стоимость доставки на сервере по pointId —
+  // не доверяем цене, показанной на клиенте (её могли подменить). Если
+  // доставка не настроена или API упал — оставляем базовый фикс, который
+  // уже проставил validateOrder (лучше принять заказ, чем потерять).
+  if (
+    order.delivery.method === YANDEX_PVZ_METHOD &&
+    order.delivery.pointId &&
+    isDeliveryConfigured()
+  ) {
+    try {
+      const price = await calcPickupPrice({
+        destinationStationId: order.delivery.pointId,
+        items: order.items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+        })),
+        assessedValueRub: order.itemsTotal,
+      });
+      order.deliveryFee = price;
+      order.grandTotal = order.itemsTotal + price;
+    } catch (err) {
+      console.error(
+        `[payment/create] пересчёт доставки Яндекс не удался для ${orderId}:`,
+        err
+      );
+    }
+  }
 
   // return_url: куда ЮKassa вернёт покупателя после оплаты. Берём наш origin
   // (он уже проверен) + страница успеха с номером заказа.
