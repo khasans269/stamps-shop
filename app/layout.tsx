@@ -4,6 +4,8 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartProvider } from "@/context/CartContext";
 import { UndoToast } from "@/components/cart/UndoToast";
+import { YandexMetrika } from "@/components/analytics/YandexMetrika";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +19,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // metadataBase — базовый адрес, от которого Next.js строит абсолютные
+  // ссылки для Open Graph и canonical. Без него превью в мессенджерах и
+  // соцсетях могут ломаться на относительных путях.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Штампы для керамики — мастерская Аскара",
     template: "%s | Штампы для керамики",
@@ -42,6 +48,7 @@ export default function RootLayout({
             <Footer />
             <UndoToast />
           </CartProvider>
+          <YandexMetrika />
         </body>
     </html>
   );
