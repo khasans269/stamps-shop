@@ -104,8 +104,9 @@ export function isAllowedOrigin(origin: string | null): boolean {
     }
     if (protocol !== "https:") return false;
     if (hostname.endsWith(".vercel.app")) return true;
-    // TODO: когда появится свой домен — добавить здесь:
-    // if (hostname === "stamps.example.ru") return true;
+    // Свой домен магазина (основной — голый, плюс www на всякий случай).
+    if (hostname === "askarceramics.ru") return true;
+    if (hostname === "www.askarceramics.ru") return true;
     return false;
   } catch {
     return false;
