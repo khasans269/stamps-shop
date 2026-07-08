@@ -24,7 +24,6 @@ const FORM_STORAGE_KEY = "stamps-shop-checkout-form";
 // человекочитаемая подпись.
 const DELIVERY_OPTIONS = [
   { value: "cdek-pvz", label: "СДЭК — пункт выдачи (расчёт онлайн)" },
-  { value: "ozon", label: "Озон Доставка (стоимость сообщу отдельно)" },
   { value: "pickup", label: "Самовывоз в СПб (ст. м. Пионерская) — бесплатно" },
 ] as const;
 
@@ -380,7 +379,23 @@ export function CheckoutClient({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
-    if (!validate()) return;
+    if (!validate()) {
+      // Кнопка «Перейти к оплате» может быть активна, а ошибочные поля —
+      // выше и за экраном. Показываем общее сообщение у кнопки и
+      // подкручиваем к первому полю с ошибкой, чтобы человек его увидел.
+      setSubmitError(
+        "Заполнены не все обязательные поля — проверьте поля, отмеченные красным выше."
+      );
+      if (typeof document !== "undefined") {
+        // Небольшая задержка: даём React отрисовать сообщения об ошибках,
+        // прежде чем искать первое из них в DOM.
+        setTimeout(() => {
+          const firstError = document.querySelector("[data-field-error]");
+          firstError?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 50);
+      }
+      return;
+    }
     // Для СДЭК ПВЗ нельзя оформлять без рассчитанной стоимости.
     if (isCdekPvz && !pvzUnavailable && (!selectedPointId || pvzPrice === null)) {
       setSubmitError("Выберите пункт выдачи и дождитесь расчёта стоимости доставки.");
@@ -829,7 +844,9 @@ export function CheckoutClient({
             </span>
           </label>
           {errors.agree && (
-            <p className="text-sm text-red-600 ml-7">{errors.agree}</p>
+            <p data-field-error className="text-sm text-red-600 ml-7">
+              {errors.agree}
+            </p>
           )}
         </div>
 
@@ -886,7 +903,11 @@ function Field({
       </span>
       {children}
       {hint && !error && <span className="text-xs text-zinc-500">{hint}</span>}
-      {error && <span className="text-sm text-red-600">{error}</span>}
+      {error && (
+        <span data-field-error className="text-sm text-red-600">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
