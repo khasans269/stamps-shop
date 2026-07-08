@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CartCounter } from "@/components/layout/CartCounter";
+import { NavLink } from "@/components/layout/NavLink";
 
 export function Header() {
   return (
@@ -14,24 +15,9 @@ export function Header() {
 
         {/* Навигация по центру — скрыта на мобильном */}
         <nav className="hidden gap-6 md:flex">
-          <Link
-            href="/catalog"
-            className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
-          >
-            Каталог
-          </Link>
-          <Link
-            href="/individual"
-            className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
-          >
-            На заказ
-          </Link>
-          <Link
-            href="/contacts"
-            className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
-          >
-            Контакты
-          </Link>
+          <NavLink href="/catalog">Каталог</NavLink>
+          <NavLink href="/individual">На заказ</NavLink>
+          <NavLink href="/contacts">Контакты</NavLink>
         </nav>
 
         {/* Корзина справа */}

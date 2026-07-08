@@ -31,7 +31,7 @@ const WHAT_TO_ORDER: { title: string; text: string; image?: string }[] = [
   {
     title: "Авторские штампы",
     text: "С вашим логотипом, надписью или собственным узором.",
-    image: "/images/individual/st01.jpg",
+    image: "/images/individual/st00.jpg",
   },
   {
     title: "Каттеры (вырубки)",
