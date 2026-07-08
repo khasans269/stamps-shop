@@ -5,21 +5,8 @@ export function Footer() {
     <footer className="border-t border-zinc-200 bg-zinc-50 py-12">
       <div className="mx-auto max-w-6xl px-4">
 
-        {/* Три колонки на md+, стек на мобильном */}
-        <div className="grid gap-8 md:grid-cols-3">
-
-          {/* Колонка 1: о магазине */}
-          <div>
-            <p className="mb-3 font-semibold text-zinc-900">
-              Товары для керамистов
-            </p>
-            <p className="text-sm leading-relaxed text-zinc-500">
-              От любителей до студий. 
-            </p>
-            <p className="text-sm leading-relaxed text-zinc-500">
-              Прямые продажи от мастера
-            </p>
-          </div>
+        {/* Две колонки на md+, стек на мобильном */}
+        <div className="grid gap-8 md:grid-cols-2">
 
           {/* Колонка 2: информация */}
           <div>
