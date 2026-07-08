@@ -21,6 +21,12 @@ export function Header() {
             Каталог
           </Link>
           <Link
+            href="/individual"
+            className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
+          >
+            На заказ
+          </Link>
+          <Link
             href="/contacts"
             className="text-sm text-zinc-600 transition-colors hover:text-zinc-900"
           >
