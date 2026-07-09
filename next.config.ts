@@ -44,6 +44,15 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Отключаем встроенную оптимизацию картинок Next.js.
+  // Причина: на хостинге (Timeweb App Platform) контейнер не может писать в
+  // .next/cache/images (EACCES) — из-за этого Next пытался оптимизировать
+  // каждое фото заново на каждый запрос (тормоза + unhandledRejection).
+  // С unoptimized: true картинки отдаются напрямую как статика из /public,
+  // кеш-папка не нужна. Важно держать сами файлы фото сжатыми.
+  images: {
+    unoptimized: true,
+  },
   async headers() {
     return [
       {
