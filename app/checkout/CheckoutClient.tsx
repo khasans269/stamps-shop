@@ -23,6 +23,7 @@ const FORM_STORAGE_KEY = "stamps-shop-checkout-form";
 // Способы доставки. Используются и как value (передаём дальше), и как
 // человекочитаемая подпись.
 const DELIVERY_OPTIONS = [
+  { value: "yandex-pvz", label: "Яндекс Доставка — пункт выдачи (расчёт онлайн)" },
   { value: "cdek-pvz", label: "СДЭК — пункт выдачи (расчёт онлайн)" },
   { value: "pickup", label: "Самовывоз в СПб (ст. м. Пионерская) — бесплатно" },
 ] as const;
@@ -34,6 +35,10 @@ const PICKUP_VALUE = "pickup";
 // Значение способа «СДЭК ПВЗ» — с онлайн-расчётом через виджет СДЭК. Должно
 // совпадать с CDEK_PVZ_METHOD на сервере (lib/order.ts).
 const CDEK_PVZ_VALUE = "cdek-pvz";
+
+// Значение способа «Яндекс ПВЗ» — онлайн-расчёт через виджет Яндекс Доставки.
+// Должно совпадать с YANDEX_PVZ_METHOD на сервере (lib/order.ts).
+const YANDEX_PVZ_VALUE = "yandex-pvz";
 
 
 // Что показываем покупателю при выборе самовывоза (и кладём в сводку заказа).
@@ -103,9 +108,11 @@ function normalizeTelegram(input: string): string {
 export function CheckoutClient({
   deliveryFee,
   mapsApiKey,
+  yandexStationId,
 }: {
   deliveryFee: number;
   mapsApiKey: string;
+  yandexStationId: string;
 }) {
   const router = useRouter();
   const { items, totalCount } = useCart();
@@ -151,14 +158,21 @@ export function CheckoutClient({
   const [selectedPointAddress, setSelectedPointAddress] = useState("");
   const [pvzPrice, setPvzPrice] = useState<number | null>(null);
   const widgetInitedRef = useRef(false);
+  // Отдельные флаг инициализации и последняя цена для виджета Яндекса.
+  const yandexWidgetInitedRef = useRef(false);
+  const lastYandexPriceRef = useRef<number | null>(null);
 
   const isPickup = delivery === PICKUP_VALUE;
   const isCdekPvz = delivery === CDEK_PVZ_VALUE;
+  const isYandexPvz = delivery === YANDEX_PVZ_VALUE;
+  // Оба виджетных способа (СДЭК/Яндекс) — «ПВЗ с онлайн-расчётом».
+  const isAnyPvz = isCdekPvz || isYandexPvz;
 
-  // Расчёт недоступен, если не задан ключ Яндекс.Карт (без него виджет
-  // СДЭК не отобразится) — тогда работаем как раньше: стоимость сообщим
-  // отдельно. Вычисляемое значение, чтобы не дёргать setState из эффекта.
-  const pvzUnavailable = isCdekPvz && !mapsApiKey;
+  // Онлайн-расчёт недоступен, если у выбранного виджета нет нужного параметра:
+  // у СДЭК — ключ Яндекс.Карт, у Яндекс Доставки — id склада отгрузки. Тогда
+  // работаем как раньше: стоимость сообщим отдельно.
+  const pvzUnavailable =
+    (isCdekPvz && !mapsApiKey) || (isYandexPvz && !yandexStationId);
 
   // Вес посылки для виджета (граммы) — по категориям товаров в заказе.
   const parcelWeightGrams = useMemo(
@@ -179,14 +193,14 @@ export function CheckoutClient({
   //  • остальные способы — фикс из env.
   let effectiveDeliveryFee: number | null;
   if (isPickup) effectiveDeliveryFee = 0;
-  else if (isCdekPvz) effectiveDeliveryFee = pvzUnavailable ? deliveryFee : pvzPrice;
+  else if (isAnyPvz) effectiveDeliveryFee = pvzUnavailable ? deliveryFee : pvzPrice;
   else effectiveDeliveryFee = deliveryFee;
 
   const grandTotal = totalPrice + (effectiveDeliveryFee ?? 0);
 
   // Готовность к оформлению: для СДЭК ПВЗ нужна известная цена (или
   // включённый запасной вариант, когда расчёт недоступен).
-  const pvzReady = !isCdekPvz || pvzUnavailable || pvzPrice !== null;
+  const pvzReady = !isAnyPvz || pvzUnavailable || pvzPrice !== null;
 
   // Ошибки валидации по полям. Заполняются при попытке отправки.
   // null — поле ещё не валидировалось / прошло валидацию.
@@ -277,7 +291,7 @@ export function CheckoutClient({
     if (!isValidEmail(email)) {
       next.email = "Введите корректный email";
     }
-    if (!isPickup && !isCdekPvz && address.trim().length < 5) {
+    if (!isPickup && !isAnyPvz && address.trim().length < 5) {
       next.address = "Укажите адрес или пункт выдачи";
     }
     if (!agree) {
@@ -290,6 +304,16 @@ export function CheckoutClient({
     setErrors(next);
     return Object.keys(next).length === 0;
   }
+
+  // При смене способа доставки сбрасываем выбранный пункт и цену, чтобы
+  // данные одного виджета (СДЭК/Яндекс) не перетекали в другой.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setSelectedPointId(null);
+    setSelectedPointAddress("");
+    setPvzPrice(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [delivery]);
 
   // Инициализация виджета ПВЗ СДЭК, когда выбран этот способ. Виджет рисует
   // карту с пунктами, ищет по адресу и считает стоимость (через наш прокси
@@ -376,6 +400,84 @@ export function CheckoutClient({
     };
   }, [isCdekPvz, mapsApiKey, parcelWeightGrams]);
 
+  // Инициализация виджета ПВЗ Яндекс Доставки, когда выбран этот способ.
+  // Виджет сам рисует карту с пунктами, ищет по адресу и считает стоимость.
+  // Нужен только id склада отгрузки (source_platform_station) — токен не нужен.
+  useEffect(() => {
+    if (!isYandexPvz) {
+      yandexWidgetInitedRef.current = false;
+      return;
+    }
+    // Нет id склада отгрузки — виджет не поднимаем (покажем запасной вариант).
+    if (!yandexStationId) return;
+
+    const SCRIPT_SRC = "https://ndd-widget.landpro.site/widget.js?v=2";
+
+    function createWidget() {
+      const w = window as unknown as {
+        YaDelivery?: { createWidget: (cfg: unknown) => void };
+      };
+      if (!w.YaDelivery || yandexWidgetInitedRef.current) return;
+      const container = document.getElementById("delivery-widget");
+      if (!container) return;
+      container.innerHTML = ""; // на случай повторной инициализации
+      yandexWidgetInitedRef.current = true;
+      w.YaDelivery.createWidget({
+        containerId: "delivery-widget",
+        params: {
+          city: "Санкт-Петербург",
+          size: { height: "520px", width: "100%" },
+          source_platform_station: yandexStationId,
+          physical_dims_weight_gross: parcelWeightGrams,
+          // Виджет зовёт эту функцию, чтобы показать цену пункта — запоминаем.
+          delivery_price: (price: number) => {
+            lastYandexPriceRef.current = price;
+            return `${price} ₽`;
+          },
+          delivery_term: 2,
+          show_select_button: true,
+          filter: {
+            type: ["pickup_point", "terminal"],
+            payment_methods: ["already_paid"],
+            payment_methods_filter: "or",
+          },
+        },
+      });
+    }
+
+    function onPointSelected(e: Event) {
+      const detail = (e as CustomEvent).detail as {
+        id?: string;
+        address?: { full_address?: string };
+      };
+      if (!detail?.id) return;
+      setSelectedPointId(detail.id);
+      setSelectedPointAddress(detail.address?.full_address ?? "");
+      const price = lastYandexPriceRef.current;
+      setPvzPrice(typeof price === "number" ? Math.ceil(price) : null);
+    }
+
+    const w = window as unknown as { YaDelivery?: unknown };
+    if (w.YaDelivery) {
+      createWidget();
+    } else {
+      if (!document.querySelector(`script[src="${SCRIPT_SRC}"]`)) {
+        const s = document.createElement("script");
+        s.async = true;
+        s.src = SCRIPT_SRC;
+        document.body.appendChild(s);
+      }
+      document.addEventListener("YaNddWidgetLoad", createWidget);
+    }
+    document.addEventListener("YaNddWidgetPointSelected", onPointSelected);
+
+    return () => {
+      document.removeEventListener("YaNddWidgetLoad", createWidget);
+      document.removeEventListener("YaNddWidgetPointSelected", onPointSelected);
+      yandexWidgetInitedRef.current = false;
+    };
+  }, [isYandexPvz, yandexStationId, parcelWeightGrams]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
@@ -396,8 +498,8 @@ export function CheckoutClient({
       }
       return;
     }
-    // Для СДЭК ПВЗ нельзя оформлять без рассчитанной стоимости.
-    if (isCdekPvz && !pvzUnavailable && (!selectedPointId || pvzPrice === null)) {
+    // Для СДЭК/Яндекс ПВЗ нельзя оформлять без рассчитанной стоимости.
+    if (isAnyPvz && !pvzUnavailable && (!selectedPointId || pvzPrice === null)) {
       setSubmitError("Выберите пункт выдачи и дождитесь расчёта стоимости доставки.");
       return;
     }
@@ -432,14 +534,14 @@ export function CheckoutClient({
         // — введённый адрес.
         address: isPickup
           ? PICKUP_INFO
-          : isCdekPvz
-            ? selectedPointAddress || "Пункт выдачи СДЭК"
+          : isAnyPvz
+            ? selectedPointAddress || "Выбранный пункт выдачи"
             : address.trim(),
-        // id выбранного пункта выдачи СДЭК (для справки в заказе).
-        pointId: isCdekPvz ? selectedPointId : null,
-        // Стоимость доставки, посчитанная виджетом (для СДЭК ПВЗ). Сервер
+        // id выбранного пункта выдачи (СДЭК/Яндекс) — для справки в заказе.
+        pointId: isAnyPvz ? selectedPointId : null,
+        // Стоимость доставки, посчитанная виджетом (СДЭК/Яндекс). Сервер
         // её санитизирует и использует как стоимость доставки.
-        deliveryPrice: isCdekPvz && !pvzUnavailable ? pvzPrice : null,
+        deliveryPrice: isAnyPvz && !pvzUnavailable ? pvzPrice : null,
       },
       comment: comment.trim() || null,
       items: orderRows.map(({ product, quantity }) => ({
@@ -665,16 +767,15 @@ export function CheckoutClient({
                 </label>
               ))}
             </div>
-            {isCdekPvz && (
+            {isAnyPvz && (
               <p className="text-xs text-zinc-500">
                 Введите город и улицу, выберите пункт выдачи — стоимость
                 доставки посчитается автоматически и войдёт в итог.
               </p>
             )}
-            {!isPickup && !isCdekPvz && (
+            {!isPickup && !isAnyPvz && (
               <p className="text-xs text-zinc-500">
-                Стоимость доставки сообщу отдельно после оформления. Или
-                выберите СДЭК ПВЗ (расчёт онлайн) либо самовывоз в СПб.
+                Стоимость доставки сообщу отдельно после оформления.
               </p>
             )}
           </div>
@@ -699,6 +800,38 @@ export function CheckoutClient({
                   <div
                     id="cdek-map"
                     style={{ width: "100%", height: "520px" }}
+                    className="overflow-hidden rounded-xl border border-zinc-200"
+                  />
+                  {selectedPointId && (
+                    <div className="rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm">
+                      <p className="font-medium text-zinc-900">Пункт выбран</p>
+                      {selectedPointAddress && (
+                        <p className="text-zinc-600">{selectedPointAddress}</p>
+                      )}
+                      {pvzPrice !== null && (
+                        <p className="mt-1 font-medium">
+                          Стоимость доставки: {pvzPrice.toLocaleString("ru-RU")} ₽
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : isYandexPvz ? (
+            // Яндекс ПВЗ: официальный виджет Яндекс Доставки — карта с пунктами,
+            // поиск по адресу и расчёт стоимости внутри виджета.
+            <div className="flex flex-col gap-3">
+              {pvzUnavailable ? (
+                <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Онлайн-расчёт временно недоступен — стоимость доставки сообщу
+                  отдельно после оформления.
+                </p>
+              ) : (
+                <>
+                  <div
+                    id="delivery-widget"
+                    style={{ width: "100%", minHeight: "520px" }}
                     className="overflow-hidden rounded-xl border border-zinc-200"
                   />
                   {selectedPointId && (
@@ -783,7 +916,7 @@ export function CheckoutClient({
               <span className="font-medium">
                 {isPickup
                   ? "бесплатно (самовывоз)"
-                  : isCdekPvz
+                  : isAnyPvz
                     ? pvzUnavailable
                       ? "сообщу отдельно"
                       : pvzPrice !== null
@@ -806,7 +939,7 @@ export function CheckoutClient({
               {errors.total}
             </p>
           )}
-          {!isPickup && (isCdekPvz ? pvzPrice !== null : deliveryFee > 0) && (
+          {!isPickup && (isAnyPvz ? pvzPrice !== null : deliveryFee > 0) && (
             <p className="px-4 text-xs text-zinc-500">
               Оплата товара и доставки проходит одним платежом.
             </p>

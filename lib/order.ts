@@ -33,6 +33,11 @@ export const PICKUP_ADDRESS =
 // считает виджет на клиенте, сервер её санитизирует (см. validateOrder).
 export const CDEK_PVZ_METHOD = "cdek-pvz";
 
+// Способ «Яндекс ПВЗ» — с онлайн-расчётом через виджет Яндекс Доставки.
+// Значение совпадает с YANDEX_PVZ_VALUE на форме (CheckoutClient.tsx). Цену
+// считает виджет на клиенте, сервер её санитизирует так же, как у СДЭК.
+export const YANDEX_PVZ_METHOD = "yandex-pvz";
+
 // Фикс-стоимость доставки в рублях. Берётся из переменной окружения
 // DELIVERY_FLAT_FEE (её задаёт продавец в Vercel), чтобы менять цену
 // доставки без правки кода и передеплоя. Если переменная не задана или
@@ -432,7 +437,7 @@ export function validateOrder(
   let deliveryFee: number;
   if (isPickup) {
     deliveryFee = 0;
-  } else if (method === CDEK_PVZ_METHOD) {
+  } else if (method === CDEK_PVZ_METHOD || method === YANDEX_PVZ_METHOD) {
     const dp = Number(delivery.deliveryPrice);
     deliveryFee =
       Number.isFinite(dp) && dp >= 0 && dp <= 100000

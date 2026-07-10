@@ -25,5 +25,15 @@ export default function CheckoutPage() {
   // Картах). Ключ ограничен HTTP Referrer, поэтому его норм передавать в
   // браузер. Если не задан — виджет не покажется, доставка «сообщу отдельно».
   const mapsApiKey = process.env.YANDEX_MAPS_API_KEY ?? "";
-  return <CheckoutClient deliveryFee={deliveryFee} mapsApiKey={mapsApiKey} />;
+  // id склада отгрузки для виджета ПВЗ Яндекс Доставки (source_platform_station).
+  // Токен виджету не нужен. Если не задан — способ «Яндекс ПВЗ» покажет
+  // «стоимость сообщу отдельно».
+  const yandexStationId = process.env.YANDEX_DELIVERY_SOURCE_STATION_ID ?? "";
+  return (
+    <CheckoutClient
+      deliveryFee={deliveryFee}
+      mapsApiKey={mapsApiKey}
+      yandexStationId={yandexStationId}
+    />
+  );
 }
