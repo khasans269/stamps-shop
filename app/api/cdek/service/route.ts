@@ -110,6 +110,16 @@ async function calculate(body: Record<string, unknown>, token: string): Promise<
     body: JSON.stringify(body),
   });
   const text = await res.text().catch(() => "");
+  // Логируем причину, если СДЭК вернул ошибку или пустой список тарифов —
+  // иначе «не могу посчитать» не видно в логах (СДЭК часто отдаёт 200 с
+  // ошибкой внутри тела). В логе — маршрут запроса и ответ СДЭК, без секретов.
+  const low = text.toLowerCase();
+  if (!res.ok || low.includes('"errors"') || !low.includes("tariff_codes")) {
+    console.error(
+      `[cdek/service] tarifflist ${res.status} host=${new URL(base).host} ` +
+        `req=${JSON.stringify(body).slice(0, 400)} resp=${text.slice(0, 500)}`
+    );
+  }
   return new NextResponse(text, {
     status: res.status,
     headers: { "Content-Type": "application/json" },
