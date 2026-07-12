@@ -699,8 +699,9 @@ export function CheckoutClient({
             </div>
           ) : isCdekPvz ? (
             // СДЭК ПВЗ: свой выбор пункта через API (без виджета) — город,
-            // список ПВЗ/постаматов, цена считается на сервере.
-            <div className="flex flex-col gap-3">
+            // список ПВЗ/постаматов, цена считается на сервере. Отдельный фон,
+            // чтобы блок доставки визуально выделялся.
+            <div className="flex flex-col gap-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
               <CdekPointPicker
                 orderSum={totalPrice}
                 weightGrams={parcelWeightGrams}

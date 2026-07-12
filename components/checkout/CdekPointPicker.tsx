@@ -48,7 +48,12 @@ export function CdekPointPicker({
       suppressSuggest.current = false;
       return;
     }
-    const q = cityQuery.trim();
+    // Убираем префикс «г.»/«город» (браузер часто автоподставляет
+    // «г. Санкт-Петербург» — СДЭК по такой строке ничего не находит).
+    const q = cityQuery
+      .trim()
+      .replace(/^(г\.?|город)\s+/i, "")
+      .trim();
     if (q.length < 2) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSuggestions([]);
@@ -142,9 +147,21 @@ export function CdekPointPicker({
             setCityQuery(e.target.value);
             setCity(null);
           }}
+          onKeyDown={(e) => {
+            // Enter выбирает первую подсказку — на случай, если поле заполнено
+            // автоподстановкой браузера и пользователь не кликнул по списку.
+            if (e.key === "Enter" && suggestions.length > 0) {
+              e.preventDefault();
+              chooseCity(suggestions[0]);
+            }
+          }}
           className="w-full rounded-xl border border-zinc-300 px-4 py-3 outline-none transition focus:border-zinc-900"
           placeholder="Город доставки — начните вводить"
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-lpignore="true"
         />
         {suggestions.length > 0 && (
           <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg">
@@ -176,20 +193,10 @@ export function CdekPointPicker({
         </p>
       )}
 
-      {/* Цены по типам (когда город выбран) */}
-      {city && !loading && !error && (prices.pvz != null || prices.postamat != null) && (
-        <div className="flex flex-wrap gap-3 text-sm">
-          {prices.pvz != null && (
-            <span className="rounded-lg bg-zinc-100 px-3 py-1">
-              ПВЗ: <b>{prices.pvz.toLocaleString("ru-RU")} ₽</b>
-            </span>
-          )}
-          {prices.postamat != null && (
-            <span className="rounded-lg bg-zinc-100 px-3 py-1">
-              Постамат: <b>{prices.postamat.toLocaleString("ru-RU")} ₽</b>
-            </span>
-          )}
-        </div>
+      {city && points.length > 0 && (
+        <p className="text-sm font-medium text-zinc-700">
+          Пункты выдачи в городе {city.name}:
+        </p>
       )}
 
       {/* Поиск по пунктам */}
