@@ -6,11 +6,8 @@ import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import productsData from "@/data/products.json";
 import type { Product } from "@/types";
-import {
-  getOrderWeightGrams,
-  DEFAULT_PARCEL_CM,
-  cdekRetailDeliveryPrice,
-} from "@/lib/delivery";
+import { getOrderWeightGrams } from "@/lib/delivery";
+import { CdekPointPicker } from "@/components/checkout/CdekPointPicker";
 
 const allProducts = productsData.products as Product[];
 
@@ -111,11 +108,9 @@ function normalizeTelegram(input: string): string {
 // и включаем в итог к оплате. Настоящий пересчёт всё равно на сервере.
 export function CheckoutClient({
   deliveryFee,
-  mapsApiKey,
   yandexStationId,
 }: {
   deliveryFee: number;
-  mapsApiKey: string;
   yandexStationId: string;
 }) {
   const router = useRouter();
@@ -140,13 +135,6 @@ export function CheckoutClient({
     0
   );
 
-  // Сумма заказа в ref — чтобы колбэк виджета СДЭК (onChoose) видел
-  // актуальное значение без пересоздания виджета. Нужна для расчёта страховки.
-  const totalPriceRef = useRef(totalPrice);
-  useEffect(() => {
-    totalPriceRef.current = totalPrice;
-  }, [totalPrice]);
-
 
   // ── Состояние формы ─────────────────────────────────────────────────────
   const [name, setName] = useState("");
@@ -164,11 +152,10 @@ export function CheckoutClient({
   // На сервере непустое значение → запрос молча отвергается.
   const [website, setWebsite] = useState("");
 
-  // ── СДЭК ПВЗ (виджет СДЭК) ──────────────────────────────────────────────
+  // ── Выбранный пункт выдачи (общее для СДЭК/Яндекс) ──────────────────────
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedPointAddress, setSelectedPointAddress] = useState("");
   const [pvzPrice, setPvzPrice] = useState<number | null>(null);
-  const widgetInitedRef = useRef(false);
   // Отдельные флаг инициализации и последняя цена для виджета Яндекса.
   const yandexWidgetInitedRef = useRef(false);
   const lastYandexPriceRef = useRef<number | null>(null);
@@ -179,11 +166,9 @@ export function CheckoutClient({
   // Оба виджетных способа (СДЭК/Яндекс) — «ПВЗ с онлайн-расчётом».
   const isAnyPvz = isCdekPvz || isYandexPvz;
 
-  // Онлайн-расчёт недоступен, если у выбранного виджета нет нужного параметра:
-  // у СДЭК — ключ Яндекс.Карт, у Яндекс Доставки — id склада отгрузки. Тогда
-  // работаем как раньше: стоимость сообщим отдельно.
-  const pvzUnavailable =
-    (isCdekPvz && !mapsApiKey) || (isYandexPvz && !yandexStationId);
+  // Онлайн-расчёт недоступен только у Яндекса, если не задан id склада.
+  // У СДЭК расчёт идёт через собственный API (компонент CdekPointPicker).
+  const pvzUnavailable = isYandexPvz && !yandexStationId;
 
   // Вес посылки для виджета (граммы) — по категориям товаров в заказе.
   const parcelWeightGrams = useMemo(
@@ -325,101 +310,6 @@ export function CheckoutClient({
     setPvzPrice(null);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [delivery]);
-
-  // Инициализация виджета ПВЗ СДЭК, когда выбран этот способ. Виджет рисует
-  // карту с пунктами, ищет по адресу и считает стоимость (через наш прокси
-  // /api/cdek/service). По выбору пункта (onChoose) забираем код пункта,
-  // адрес и стоимость выбранного тарифа.
-  useEffect(() => {
-    if (!isCdekPvz) {
-      // Ушли с этого способа — сбрасываем флаг, чтобы при возврате виджет
-      // создался заново.
-      widgetInitedRef.current = false;
-      return;
-    }
-    // Нет ключа Яндекс.Карт — виджет не поднимаем (в UI покажем запасной
-    // вариант «стоимость сообщу отдельно»).
-    if (!mapsApiKey) return;
-
-    const SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/@cdek-it/widget@3";
-
-    function createWidget() {
-      const w = window as unknown as {
-        CDEKWidget?: new (cfg: unknown) => unknown;
-      };
-      if (!w.CDEKWidget || widgetInitedRef.current) return;
-      if (!document.getElementById("cdek-map")) return;
-      widgetInitedRef.current = true;
-      new w.CDEKWidget({
-        root: "cdek-map",
-        apiKey: mapsApiKey,
-        servicePath: "/api/cdek/service",
-        // Точка отправления (склад/ПВЗ, откуда шлём). СДЭК-калькулятор не
-        // распознаёт голое название города ("v2_sender_location_not_recognized"),
-        // поэтому задаём объектом с почтовым индексом — он однозначно
-        // определяет город отправления. 197348 — СДЭК на Коломяжском пр., 15к8.
-        from: { city: "Санкт-Петербург", postal_code: "197348" },
-        // Координаты СПб в порядке [долгота, широта] — именно так их ждёт
-        // Яндекс.Карты v3 (GeoJSON-порядок), на котором работает виджет v3.
-        // Если перепутать местами (широта, долгота), карта улетает в Иран.
-        // Координатами, а не строкой — чтобы виджет НЕ геокодил стартовую
-        // точку через Яндекс (иначе падает без браузерного геокодера).
-        defaultLocation: [30.3141, 59.9386],
-        hideDeliveryOptions: { door: true }, // только пункты выдачи (ПВЗ)
-        goods: [
-          {
-            width: DEFAULT_PARCEL_CM.width,
-            height: DEFAULT_PARCEL_CM.height,
-            length: DEFAULT_PARCEL_CM.length,
-            weight: parcelWeightGrams, // граммы
-          },
-        ],
-        // Тариф до ПВЗ: 136 «Посылка склад-склад» — самая дешёвая экономная
-        // доставка (совпадает с ценами в приложении СДЭК: ~285 ₽ вместо ~630 ₽
-        // у «Экспресс»). Доступна только при type=2 — его принудительно
-        // выставляет наш прокси /api/cdek/service. Продавец сдаёт посылку в
-        // пункт СДЭК (старт «склад»).
-        tariffs: { office: [136] },
-        onChoose(
-          _mode: string,
-          tariff: { delivery_sum?: number },
-          address: { code?: string | number; name?: string; address?: string }
-        ) {
-          setSelectedPointId(address?.code != null ? String(address.code) : null);
-          const parts = [address?.name, address?.address].filter(Boolean);
-          setSelectedPointAddress(parts.join(", "));
-          // Базовую цену тарифа СДЭК превращаем в розничную (с НДС, страховкой,
-          // упаковкой и налогом) — чтобы доставка покрывала расходы продавца.
-          const sum = Number(tariff?.delivery_sum);
-          setPvzPrice(
-            Number.isFinite(sum)
-              ? cdekRetailDeliveryPrice(Math.ceil(sum), totalPriceRef.current)
-              : null
-          );
-        },
-      });
-    }
-
-    const w = window as unknown as { CDEKWidget?: unknown };
-    if (w.CDEKWidget) {
-      createWidget();
-    } else {
-      let script = document.querySelector<HTMLScriptElement>(
-        `script[src="${SCRIPT_SRC}"]`
-      );
-      if (!script) {
-        script = document.createElement("script");
-        script.src = SCRIPT_SRC;
-        script.charset = "utf-8";
-        document.body.appendChild(script);
-      }
-      script.addEventListener("load", createWidget);
-    }
-
-    return () => {
-      widgetInitedRef.current = false;
-    };
-  }, [isCdekPvz, mapsApiKey, parcelWeightGrams]);
 
   // Инициализация виджета ПВЗ Яндекс Доставки, когда выбран этот способ.
   // Виджет сам рисует карту с пунктами, ищет по адресу и считает стоимость.
@@ -808,35 +698,34 @@ export function CheckoutClient({
               <p>{PICKUP_INFO}</p>
             </div>
           ) : isCdekPvz ? (
-            // СДЭК ПВЗ: официальный виджет СДЭК — карта с пунктами, поиск по
-            // адресу и расчёт стоимости внутри виджета.
+            // СДЭК ПВЗ: свой выбор пункта через API (без виджета) — город,
+            // список ПВЗ/постаматов, цена считается на сервере.
             <div className="flex flex-col gap-3">
-              {pvzUnavailable ? (
-                <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  Онлайн-расчёт временно недоступен — стоимость доставки сообщу
-                  отдельно после оформления.
-                </p>
-              ) : (
-                <>
-                  <div
-                    id="cdek-map"
-                    style={{ width: "100%", height: "520px" }}
-                    className="overflow-hidden rounded-xl border border-zinc-200"
-                  />
-                  {selectedPointId && (
-                    <div className="rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm">
-                      <p className="font-medium text-zinc-900">Пункт выбран</p>
-                      {selectedPointAddress && (
-                        <p className="text-zinc-600">{selectedPointAddress}</p>
-                      )}
-                      {pvzPrice !== null && (
-                        <p className="mt-1 font-medium">
-                          Стоимость доставки: {pvzPrice.toLocaleString("ru-RU")} ₽
-                        </p>
-                      )}
-                    </div>
+              <CdekPointPicker
+                orderSum={totalPrice}
+                weightGrams={parcelWeightGrams}
+                onSelect={(sel) => {
+                  if (sel) {
+                    setSelectedPointId(sel.pointId);
+                    setSelectedPointAddress(sel.address);
+                    setPvzPrice(sel.price);
+                  } else {
+                    setSelectedPointId(null);
+                    setSelectedPointAddress("");
+                    setPvzPrice(null);
+                  }
+                }}
+              />
+              {selectedPointId && pvzPrice !== null && (
+                <div className="rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm">
+                  <p className="font-medium text-zinc-900">Пункт выбран</p>
+                  {selectedPointAddress && (
+                    <p className="text-zinc-600">{selectedPointAddress}</p>
                   )}
-                </>
+                  <p className="mt-1 font-medium">
+                    Стоимость доставки: {pvzPrice.toLocaleString("ru-RU")} ₽
+                  </p>
+                </div>
               )}
             </div>
           ) : isYandexPvz ? (
