@@ -104,6 +104,14 @@ export async function suggestCities(query: string): Promise<CitySuggestion[]> {
     }));
 }
 
+// ВРЕМЕННО (отладка): сырой ответ СДЭК на подсказку городов — чтобы увидеть
+// реальные имена полей. Удалить после настройки парсера.
+export async function debugCitiesRaw(query: string): Promise<unknown> {
+  const token = await getToken();
+  const params = new URLSearchParams({ name: query, country_code: "RU" });
+  return cdekGet(`location/suggest/cities?${params.toString()}`, token);
+}
+
 // ── Пункты выдачи города ─────────────────────────────────────────────────────
 export interface DeliveryPoint {
   code: string;
