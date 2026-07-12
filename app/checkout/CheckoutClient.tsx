@@ -680,8 +680,8 @@ export function CheckoutClient({
             </div>
             {isAnyPvz && (
               <p className="text-xs text-zinc-500">
-                Введите город и улицу, выберите пункт выдачи — стоимость
-                доставки посчитается автоматически и войдёт в итог.
+                Выберите населённый пункт, затем укажите подходящий ПВЗ —
+                стоимость доставки посчитается автоматически и войдёт в итог.
               </p>
             )}
             {!isPickup && !isAnyPvz && (
@@ -718,7 +718,7 @@ export function CheckoutClient({
                 }}
               />
               {selectedPointId && pvzPrice !== null && (
-                <div className="rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm">
+                <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm">
                   <p className="font-medium text-zinc-900">Пункт выбран</p>
                   {selectedPointAddress && (
                     <p className="text-zinc-600">{selectedPointAddress}</p>
@@ -779,7 +779,7 @@ export function CheckoutClient({
 
           <Field
             label="Комментарий"
-            hint="Удобный способ связи (Telegram, WhatsApp, звонок), пожелания по упаковке или деталям индивидуального заказа."
+            hint="Удобный способ связи (Telegram, звонок), пожелания по упаковке или деталям индивидуального заказа."
           >
             <textarea
               value={comment}

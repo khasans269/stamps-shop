@@ -223,7 +223,7 @@ export function CdekPointPicker({
                   type="button"
                   onClick={() => choosePoint(p)}
                   className={`block w-full px-4 py-3 text-left transition ${
-                    active ? "bg-zinc-900/5" : "hover:bg-zinc-50"
+                    active ? "bg-green-50" : "hover:bg-zinc-50"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
