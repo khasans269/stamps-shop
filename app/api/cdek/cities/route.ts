@@ -2,18 +2,13 @@
 // GET /api/cdek/cities?q=<текст> → { cities: [{ cityCode, name, region }] }
 
 import { NextResponse } from "next/server";
-import { suggestCities, debugCitiesRaw } from "@/lib/cdek";
+import { suggestCities } from "@/lib/cdek";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const q = url.searchParams.get("q") ?? "";
+  const q = new URL(request.url).searchParams.get("q") ?? "";
   try {
-    // ВРЕМЕННО: ?debug=1 — вернуть сырой ответ СДЭК для настройки парсера.
-    if (url.searchParams.get("debug") === "1") {
-      return NextResponse.json({ raw: await debugCitiesRaw(q) });
-    }
     return NextResponse.json({ cities: await suggestCities(q) });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

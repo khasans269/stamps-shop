@@ -89,27 +89,29 @@ export async function suggestCities(query: string): Promise<CitySuggestion[]> {
   if (q.length < 2) return [];
   const token = await getToken();
   const params = new URLSearchParams({ name: q, country_code: "RU" });
+  // СДЭК отдаёт { code: number, full_name: "Город, ..., Страна" }.
   const data = (await cdekGet(
     `location/suggest/cities?${params.toString()}`,
     token
-  )) as Array<{ code?: number; city?: string; region?: string }> | null;
+  )) as Array<{ code?: number; full_name?: string }> | null;
   if (!Array.isArray(data)) return [];
   return data
-    .filter((c) => typeof c.code === "number" && c.city)
+    .filter((c) => typeof c.code === "number" && c.full_name)
     .slice(0, 15)
-    .map((c) => ({
-      cityCode: c.code as number,
-      name: c.city as string,
-      region: c.region ?? "",
-    }));
-}
-
-// ВРЕМЕННО (отладка): сырой ответ СДЭК на подсказку городов — чтобы увидеть
-// реальные имена полей. Удалить после настройки парсера.
-export async function debugCitiesRaw(query: string): Promise<unknown> {
-  const token = await getToken();
-  const params = new URLSearchParams({ name: query, country_code: "RU" });
-  return cdekGet(`location/suggest/cities?${params.toString()}`, token);
+    .map((c) => {
+      const parts = (c.full_name as string)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      // Отбрасываем страну в конце, город — первый элемент, остальное — регион.
+      const useParts =
+        parts[parts.length - 1] === "Россия" ? parts.slice(0, -1) : parts;
+      return {
+        cityCode: c.code as number,
+        name: useParts[0] ?? (c.full_name as string),
+        region: useParts.slice(1).join(", "),
+      };
+    });
 }
 
 // ── Пункты выдачи города ─────────────────────────────────────────────────────
