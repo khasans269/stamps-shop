@@ -100,6 +100,11 @@ async function offices(params: URLSearchParams, token: string): Promise<Response
 async function calculate(body: Record<string, unknown>, token: string): Promise<Response> {
   const { base } = config();
   delete body.action;
+  // Принудительно тип 2 («обычная доставка»). На боевом договоре продавца
+  // экономные тарифы «Посылка» (136 и т.п.) отдаются только при type=2; при
+  // type=1 («интернет-магазин») возвращались лишь дорогие «Экспресс». type=2
+  // возвращает надмножество (и «Посылка», и «Экспресс»), поэтому безопасно.
+  body.type = 2;
   const res = await fetch(`${base}/calculator/tarifflist`, {
     method: "POST",
     headers: {

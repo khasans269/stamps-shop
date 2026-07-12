@@ -6,7 +6,11 @@ import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import productsData from "@/data/products.json";
 import type { Product } from "@/types";
-import { getOrderWeightGrams, DEFAULT_PARCEL_CM } from "@/lib/delivery";
+import {
+  getOrderWeightGrams,
+  DEFAULT_PARCEL_CM,
+  cdekRetailDeliveryPrice,
+} from "@/lib/delivery";
 
 const allProducts = productsData.products as Product[];
 
@@ -135,6 +139,13 @@ export function CheckoutClient({
     (sum, { product, quantity }) => sum + product.price * quantity,
     0
   );
+
+  // Сумма заказа в ref — чтобы колбэк виджета СДЭК (onChoose) видел
+  // актуальное значение без пересоздания виджета. Нужна для расчёта страховки.
+  const totalPriceRef = useRef(totalPrice);
+  useEffect(() => {
+    totalPriceRef.current = totalPrice;
+  }, [totalPrice]);
 
 
   // ── Состояние формы ─────────────────────────────────────────────────────
@@ -363,12 +374,12 @@ export function CheckoutClient({
             weight: parcelWeightGrams, // граммы
           },
         ],
-        // Разрешённые тарифы «до ПВЗ». Коды подобраны под БОЕВОЙ договор
-        // продавца (тарифы 136/234/138 «Посылка» ему недоступны). Самые
-        // дешёвые «склад→ПВЗ/постамат»: 483 «Экспресс склад-склад» (ПВЗ) и
-        // 486 «Экспресс склад-постамат» — оба по 400 ₽. Продавец сдаёт
-        // посылку в пункт СДЭК (старт «склад»).
-        tariffs: { office: [483, 486] },
+        // Тариф до ПВЗ: 136 «Посылка склад-склад» — самая дешёвая экономная
+        // доставка (совпадает с ценами в приложении СДЭК: ~285 ₽ вместо ~630 ₽
+        // у «Экспресс»). Доступна только при type=2 — его принудительно
+        // выставляет наш прокси /api/cdek/service. Продавец сдаёт посылку в
+        // пункт СДЭК (старт «склад»).
+        tariffs: { office: [136] },
         onChoose(
           _mode: string,
           tariff: { delivery_sum?: number },
@@ -377,8 +388,14 @@ export function CheckoutClient({
           setSelectedPointId(address?.code != null ? String(address.code) : null);
           const parts = [address?.name, address?.address].filter(Boolean);
           setSelectedPointAddress(parts.join(", "));
+          // Базовую цену тарифа СДЭК превращаем в розничную (с НДС, страховкой,
+          // упаковкой и налогом) — чтобы доставка покрывала расходы продавца.
           const sum = Number(tariff?.delivery_sum);
-          setPvzPrice(Number.isFinite(sum) ? Math.ceil(sum) : null);
+          setPvzPrice(
+            Number.isFinite(sum)
+              ? cdekRetailDeliveryPrice(Math.ceil(sum), totalPriceRef.current)
+              : null
+          );
         },
       });
     }

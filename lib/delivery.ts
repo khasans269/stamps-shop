@@ -54,3 +54,30 @@ export function getOrderWeightGrams(
   grams += PACKAGING_GRAMS;
   return Math.max(grams, MIN_PARCEL_GRAMS);
 }
+
+// ── Розничная цена доставки СДЭК (что видит покупатель) ──────────────────────
+// Базовую цену считает виджет СДЭК (тариф 136 «Посылка склад-склад»). Поверх
+// неё закладываем реальные расходы продавца, чтобы доставка их полностью
+// покрывала. Значения — со слов продавца, проверить на реальных отправках.
+export const CDEK_MARKUP = {
+  ndsRate: 0.05, // НДС СДЭК: доля от базовой цены тарифа (285 → +14.25)
+  insuranceRate: 0.0105, // страховка: доля от суммы заказа (товаров)
+  insuranceFreeUpTo: 1000, // объявленная ценность до этой суммы — страховка 0
+  packagingRub: 15, // упаковка, ₽
+  taxRate: 0.04, // НПД 4% (продажи физлицам) — грос-ап, чтобы налог не съедал расходы
+};
+
+// Итоговая цена доставки для покупателя из базовой цены тарифа СДЭК и суммы
+// заказа (товаров). Округляем вверх до рубля, чтобы продавец не оставался в минусе.
+export function cdekRetailDeliveryPrice(
+  baseRub: number,
+  orderSumRub: number
+): number {
+  const nds = baseRub * CDEK_MARKUP.ndsRate;
+  const insurance =
+    orderSumRub > CDEK_MARKUP.insuranceFreeUpTo
+      ? orderSumRub * CDEK_MARKUP.insuranceRate
+      : 0;
+  const cost = baseRub + nds + insurance + CDEK_MARKUP.packagingRub;
+  return Math.ceil(cost / (1 - CDEK_MARKUP.taxRate));
+}
