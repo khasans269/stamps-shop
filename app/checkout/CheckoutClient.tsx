@@ -420,8 +420,13 @@ export function CheckoutClient({
     setSubmitting(true);
     setSubmitError(null);
 
-    const deliveryLabel =
-      DELIVERY_OPTIONS.find((o) => o.value === delivery)?.label ?? delivery;
+    // Метку способа берём из выбранной опции, но убираем служебное
+    // «(расчёт онлайн)» — в заказе и на странице успеха оно лишнее.
+    const deliveryLabel = (
+      DELIVERY_OPTIONS.find((o) => o.value === delivery)?.label ?? delivery
+    )
+      .replace(/\s*\(расчёт онлайн\)\s*/i, "")
+      .trim();
 
     // Тело запроса. Номер заказа сервер сгенерирует сам и вернёт нам
     // в ответе — поэтому здесь его нет.
