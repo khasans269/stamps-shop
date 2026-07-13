@@ -501,6 +501,9 @@ export function CheckoutClient({
       const orderForSuccess = {
         ...requestBody,
         orderId: data.orderId,
+        // paymentId нужен странице успеха, чтобы проверить реальный статус
+        // оплаты у ЮKassa (покупатель мог вернуться, не заплатив).
+        paymentId: data.paymentId ?? null,
         deliveryFee: effectiveDeliveryFee,
         createdAt: new Date().toISOString(),
       };

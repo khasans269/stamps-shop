@@ -6,18 +6,16 @@ import { useSearchParams } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 
 // Структура заказа, которую CheckoutClient сохраняет в sessionStorage перед
-// редиректом сюда. Описана здесь явно, чтобы не тащить общий тип:
-// success-страница — конечная точка, и эту структуру читает только она.
+// редиректом на оплату. Читает её только эта страница.
 interface OrderPayload {
   orderId: string;
+  // id платежа в ЮKassa — по нему проверяем реальный статус оплаты.
+  paymentId?: string | null;
   createdAt: string;
   contact: {
     name: string;
     phone: string;
     email: string;
-    // Опциональный Telegram-ник. Может прийти как null или вовсе
-    // отсутствовать (старые записи в sessionStorage), поэтому поле
-    // опциональное.
     telegram?: string | null;
   };
   delivery: {
@@ -33,78 +31,104 @@ interface OrderPayload {
     quantity: number;
     sum: number;
   }>;
-  // Фикс-стоимость доставки, ₽. Может отсутствовать в старых записях.
   deliveryFee?: number;
-  // Итог к оплате (товары + доставка), ₽.
   total: number;
 }
 
 const STORAGE_KEY = "stamps-shop-last-order";
+
+// Статус оплаты для рендера страницы.
+type PayStatus = "loading" | "succeeded" | "pending" | "canceled" | "unknown";
 
 export function SuccessClient() {
   const searchParams = useSearchParams();
   const orderIdFromUrl = searchParams.get("order");
   const { clearCart, items } = useCart();
 
-  // Читаем заказ из sessionStorage. Делаем это в state + useEffect, чтобы
-  // SSR не пытался прочитать недоступный там sessionStorage и не сыпал
-  // hydration mismatch.
   const [order, setOrder] = useState<OrderPayload | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [payStatus, setPayStatus] = useState<PayStatus>("loading");
 
+  // Чтение заказа из sessionStorage (один раз при маунте).
   useEffect(() => {
-    // Это одноразовое чтение из sessionStorage на маунте — типичный
-    // случай "синхронизации с внешним хранилищем", про который и говорит
-    // правило react-hooks/set-state-in-effect. Альтернатива через
-    // useSyncExternalStore + кэш сложнее и не оправдана для одноразовой
-    // загрузки.
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as OrderPayload;
-        // Проверяем, что данные относятся именно к этому номеру заказа —
-        // на случай, если пользователь открыл /checkout/success напрямую
-        // или вернулся "Назад" к старому заказу.
         if (!orderIdFromUrl || parsed.orderId === orderIdFromUrl) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
           setOrder(parsed);
         }
       }
     } catch {
-      // Если sessionStorage сломан или JSON битый — ничего страшного,
-      // покажем заглушку.
+      // битые данные — покажем общий месседж
     }
     setLoaded(true);
   }, [orderIdFromUrl]);
 
-  // Когда заказ показан и пользователь подтвердил его — чистим корзину.
-  // Делаем это однократно после того, как мы реально показали заказ,
-  // чтобы при F5 на этой странице пользователь видел те же данные, а
-  // не пустую корзину "из ниоткуда".
-  // Используем флаг в sessionStorage, чтобы зачистка прошла только раз.
+  // Проверка реального статуса оплаты у ЮKassa (покупатель мог вернуться,
+  // не заплатив). Пока pending — пара автоповторов.
   useEffect(() => {
+    if (!loaded || !order) return;
+    const paymentId = order.paymentId;
+    if (!paymentId) {
+      // Нет id платежа (старая запись) — статус не проверить.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPayStatus("unknown");
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const check = async () => {
+      try {
+        const r = await fetch(
+          `/api/payment/status?paymentId=${encodeURIComponent(paymentId)}`
+        );
+        const d = (await r.json()) as { status?: string | null };
+        if (cancelled) return;
+        if (d.status === "succeeded") {
+          setPayStatus("succeeded");
+          return;
+        }
+        if (d.status === "canceled") {
+          setPayStatus("canceled");
+          return;
+        }
+        if (d.status === "pending" || d.status === "waiting_for_capture") {
+          setPayStatus("pending");
+          attempts += 1;
+          if (attempts < 4) setTimeout(check, 3000);
+          return;
+        }
+        setPayStatus("unknown");
+      } catch {
+        if (!cancelled) setPayStatus("unknown");
+      }
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, order]);
+
+  // Корзину и черновик формы чистим ТОЛЬКО при подтверждённой оплате —
+  // иначе при отмене покупатель потерял бы товары и не смог оплатить снова.
+  useEffect(() => {
+    if (payStatus !== "succeeded") return;
     if (!order) return;
-    if (items.length === 0) return; // уже чисто
+    if (items.length === 0) return;
     const flagKey = `stamps-shop-cleared-${order.orderId}`;
     if (sessionStorage.getItem(flagKey) === "1") return;
     clearCart();
-    // Черновик формы больше не нужен — заказ оформлен. Чистим здесь (а не
-    // при переходе на оплату), чтобы при отмене оплаты форма сохранялась.
     try {
       localStorage.removeItem("stamps-shop-checkout-form");
     } catch {
       // localStorage недоступен — не критично.
     }
     sessionStorage.setItem(flagKey, "1");
-    // ВАЖНО: clearCart переводит товары в pending-удаление. Чтобы они
-    // не "вернулись", когда пользователь увидит UndoToast и нажмёт
-    // "Вернуть" — мы НЕ показываем UndoToast на этой странице.
-    // (UndoToast скрыт на /cart, но не на /checkout/success — в будущем
-    // имеет смысл скрыть его и здесь. Пока полагаемся на то, что
-    // пользователь вряд ли будет жать "Вернуть" на странице "Спасибо".)
-  }, [order, items.length, clearCart]);
+  }, [payStatus, order, items.length, clearCart]);
 
-  // Пока читаем sessionStorage — показываем минимальный плейсхолдер.
+  // Пока читаем sessionStorage.
   if (!loaded) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
@@ -113,8 +137,7 @@ export function SuccessClient() {
     );
   }
 
-  // Если данных нет (например, пользователь зашёл по прямой ссылке
-  // на /checkout/success без свежего заказа) — показываем общий месседж.
+  // Нет данных заказа (прямой заход по ссылке) — общий месседж.
   if (!order) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
@@ -138,23 +161,90 @@ export function SuccessClient() {
     );
   }
 
-  // ── Полная страница "Спасибо" с краткой сводкой заказа ────────────────
+  // Проверяем статус оплаты.
+  if (payStatus === "loading") {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <p className="text-zinc-500">Проверяем статус оплаты…</p>
+      </div>
+    );
+  }
+
+  // Оплата не завершена (покупатель вышел/отменил).
+  if (payStatus === "canceled") {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <h1 className="mb-4 text-3xl font-bold text-zinc-900">
+          Оплата не завершена
+        </h1>
+        <p className="mb-2 text-zinc-600">
+          Заказ <b>{order.orderId}</b> не оплачен.
+        </p>
+        <p className="mb-8 text-zinc-500">
+          Товары остались в корзине — можно вернуться и оплатить снова.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <Link
+            href="/cart"
+            className="rounded-2xl bg-zinc-900 px-6 py-3 text-center font-medium text-white transition hover:bg-zinc-700"
+          >
+            Вернуться к оплате
+          </Link>
+          <Link
+            href="/catalog"
+            className="rounded-2xl border border-zinc-300 bg-white px-6 py-3 text-center text-zinc-700 transition hover:bg-zinc-50"
+          >
+            В каталог
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Оплата ещё обрабатывается.
+  if (payStatus === "pending") {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <h1 className="mb-4 text-3xl font-bold text-zinc-900">
+          Ожидаем подтверждение оплаты…
+        </h1>
+        <p className="mb-2 text-zinc-600">
+          Заказ <b>{order.orderId}</b>. Это может занять несколько секунд.
+        </p>
+        <p className="mb-8 text-zinc-500">
+          Как только оплата подтвердится, я получу заказ и свяжусь с вами. Чек
+          придёт на почту <b>{order.contact.email}</b>.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-2xl bg-zinc-900 px-6 py-3 font-medium text-white transition hover:bg-zinc-700"
+        >
+          Обновить статус
+        </button>
+      </div>
+    );
+  }
+
+  // payStatus === "succeeded" | "unknown" — показываем сводку заказа.
+  // Для "unknown" (не смогли проверить) оставляем аккуратную формулировку
+  // «как только оплата подтвердится» — она не утверждает факт оплаты.
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      {/* Зелёная плашка-успех */}
       <div className="mb-8 rounded-2xl bg-emerald-50 p-6 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-700">
           ✓
         </div>
         <h1 className="text-2xl font-bold text-zinc-900 md:text-3xl">
-          Спасибо, {order.contact.name.split(" ")[0]}! Заказ оформлен
+          {payStatus === "succeeded"
+            ? `Спасибо, ${order.contact.name.split(" ")[0]}! Заказ оплачен`
+            : `Спасибо, ${order.contact.name.split(" ")[0]}! Заказ оформлен`}
         </h1>
         <p className="mt-2 text-sm text-zinc-600">
           Номер заказа: <b>{order.orderId}</b>
         </p>
       </div>
 
-      {/* Что дальше */}
       <h2 className="mb-3 text-xl font-semibold text-zinc-900">Что дальше</h2>
       <ol className="mb-10 flex flex-col gap-3 text-zinc-700">
         <li className="flex gap-3">
@@ -162,8 +252,10 @@ export function SuccessClient() {
             1
           </span>
           <span>
-            Как только оплата подтвердится, я получу заказ. Чек придёт на почту{" "}
-            <b>{order.contact.email}</b>.
+            {payStatus === "succeeded"
+              ? "Я получил ваш заказ. "
+              : "Как только оплата подтвердится, я получу заказ. "}
+            Чек придёт на почту <b>{order.contact.email}</b>.
           </span>
         </li>
         <li className="flex gap-3">
@@ -186,7 +278,6 @@ export function SuccessClient() {
         </li>
       </ol>
 
-      {/* Сводка заказа */}
       <h2 className="mb-3 text-xl font-semibold text-zinc-900">
         Краткая сводка
       </h2>
@@ -218,14 +309,15 @@ export function SuccessClient() {
           </div>
         )}
         <div className="flex items-center justify-between bg-zinc-50 px-4 py-3">
-          <span className="text-zinc-500">Итого оплачено</span>
+          <span className="text-zinc-500">
+            {payStatus === "succeeded" ? "Итого оплачено" : "Итого к оплате"}
+          </span>
           <span className="text-xl font-semibold">
             {order.total.toLocaleString("ru-RU")} ₽
           </span>
         </div>
       </div>
 
-      {/* Что я знаю про доставку */}
       <h2 className="mb-3 text-xl font-semibold text-zinc-900">Доставка</h2>
       <div className="mb-10 rounded-2xl border border-zinc-200 p-4 text-sm">
         <p>
