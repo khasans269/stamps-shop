@@ -504,6 +504,9 @@ export function CheckoutClient({
         // paymentId нужен странице успеха, чтобы проверить реальный статус
         // оплаты у ЮKassa (покупатель мог вернуться, не заплатив).
         paymentId: data.paymentId ?? null,
+        // Ссылка оплаты — чтобы со страницы успеха вернуться к той же оплате,
+        // если покупатель вышел, не завершив её.
+        confirmationUrl: data.confirmationUrl ?? null,
         deliveryFee: effectiveDeliveryFee,
         createdAt: new Date().toISOString(),
       };

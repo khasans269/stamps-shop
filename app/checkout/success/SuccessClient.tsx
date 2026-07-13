@@ -11,6 +11,8 @@ interface OrderPayload {
   orderId: string;
   // id платежа в ЮKassa — по нему проверяем реальный статус оплаты.
   paymentId?: string | null;
+  // Ссылка оплаты ЮKassa — чтобы вернуться к незавершённой оплате.
+  confirmationUrl?: string | null;
   createdAt: string;
   contact: {
     name: string;
@@ -185,10 +187,10 @@ export function SuccessClient() {
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
-            href="/cart"
+            href="/checkout"
             className="rounded-2xl bg-zinc-900 px-6 py-3 text-center font-medium text-white transition hover:bg-zinc-700"
           >
-            Вернуться к оплате
+            Оформить заново
           </Link>
           <Link
             href="/catalog"
@@ -201,27 +203,37 @@ export function SuccessClient() {
     );
   }
 
-  // Оплата ещё обрабатывается.
+  // Оплата не завершена (вышел из оплаты) или ещё обрабатывается.
   if (payStatus === "pending") {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
         <h1 className="mb-4 text-3xl font-bold text-zinc-900">
-          Ожидаем подтверждение оплаты…
+          Оплата не завершена
         </h1>
         <p className="mb-2 text-zinc-600">
-          Заказ <b>{order.orderId}</b>. Это может занять несколько секунд.
+          Заказ <b>{order.orderId}</b>.
         </p>
         <p className="mb-8 text-zinc-500">
-          Как только оплата подтвердится, я получу заказ и свяжусь с вами. Чек
-          придёт на почту <b>{order.contact.email}</b>.
+          Если вы ещё не оплатили — продолжите оплату. Если только что оплатили,
+          подтверждение может занять несколько секунд — обновите статус.
         </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="rounded-2xl bg-zinc-900 px-6 py-3 font-medium text-white transition hover:bg-zinc-700"
-        >
-          Обновить статус
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+          {order.confirmationUrl && (
+            <a
+              href={order.confirmationUrl}
+              className="rounded-2xl bg-zinc-900 px-6 py-3 text-center font-medium text-white transition hover:bg-zinc-700"
+            >
+              Продолжить оплату
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-2xl border border-zinc-300 bg-white px-6 py-3 font-medium text-zinc-700 transition hover:bg-zinc-50"
+          >
+            Обновить статус
+          </button>
+        </div>
       </div>
     );
   }
