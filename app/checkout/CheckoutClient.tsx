@@ -108,9 +108,11 @@ function normalizeTelegram(input: string): string {
 // и включаем в итог к оплате. Настоящий пересчёт всё равно на сервере.
 export function CheckoutClient({
   deliveryFee,
+  mapsApiKey,
   yandexStationId,
 }: {
   deliveryFee: number;
+  mapsApiKey: string;
   yandexStationId: string;
 }) {
   const router = useRouter();
@@ -705,6 +707,7 @@ export function CheckoutClient({
               <CdekPointPicker
                 orderSum={totalPrice}
                 weightGrams={parcelWeightGrams}
+                mapsApiKey={mapsApiKey}
                 onSelect={(sel) => {
                   if (sel) {
                     setSelectedPointId(sel.pointId);
