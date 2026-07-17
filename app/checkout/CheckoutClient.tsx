@@ -324,7 +324,8 @@ export function CheckoutClient({
     // Нет id склада отгрузки — виджет не поднимаем (покажем запасной вариант).
     if (!yandexStationId) return;
 
-    const SCRIPT_SRC = "https://ndd-widget.landpro.site/widget.js?v=2";
+    // Официальный хост виджета ПВЗ Яндекс Доставки (из документации).
+    const SCRIPT_SRC = "https://widget-pvz.dostavka.yandex.net/widget.js?v=2";
 
     function createWidget() {
       const w = window as unknown as {
