@@ -158,9 +158,10 @@ export function CheckoutClient({
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedPointAddress, setSelectedPointAddress] = useState("");
   const [pvzPrice, setPvzPrice] = useState<number | null>(null);
-  // Отдельные флаг инициализации и последняя цена для виджета Яндекса.
+  // Цена Яндекс ПВЗ считается на нашем сервере после выбора пункта.
+  const [pvzPriceLoading, setPvzPriceLoading] = useState(false);
+  const [pvzPriceError, setPvzPriceError] = useState<string | null>(null);
   const yandexWidgetInitedRef = useRef(false);
-  const lastYandexPriceRef = useRef<number | null>(null);
 
   const isPickup = delivery === PICKUP_VALUE;
   const isCdekPvz = delivery === CDEK_PVZ_VALUE;
@@ -195,6 +196,13 @@ export function CheckoutClient({
   else effectiveDeliveryFee = deliveryFee;
 
   const grandTotal = totalPrice + (effectiveDeliveryFee ?? 0);
+
+  // Актуальные вес и сумма заказа для запроса цены Яндекса из колбэка виджета
+  // (чтобы не поймать устаревшие значения в замыкании эффекта).
+  const pvzParamsRef = useRef({ weight: parcelWeightGrams, orderSum: totalPrice });
+  useEffect(() => {
+    pvzParamsRef.current = { weight: parcelWeightGrams, orderSum: totalPrice };
+  }, [parcelWeightGrams, totalPrice]);
 
   // Готовность к оформлению: для СДЭК ПВЗ нужна известная цена (или
   // включённый запасной вариант, когда расчёт недоступен).
@@ -341,14 +349,10 @@ export function CheckoutClient({
         params: {
           city: "Санкт-Петербург",
           size: { height: "520px", width: "100%" },
-          source_platform_station: yandexStationId,
-          physical_dims_weight_gross: parcelWeightGrams,
-          // Виджет зовёт эту функцию, чтобы показать цену пункта — запоминаем.
-          delivery_price: (price: number) => {
-            lastYandexPriceRef.current = price;
-            return `${price} ₽`;
-          },
-          delivery_term: 2,
+          // Цену виджет НЕ считает: source_platform_station, вес и delivery_price
+          // намеренно не передаём (по доке это отключает расчёт в виджете).
+          // Стоимость считаем на своём сервере по id выбранного пункта —
+          // так она приходит одинаково во всех браузерах.
           show_select_button: true,
           filter: {
             type: ["pickup_point", "terminal"],
@@ -359,7 +363,7 @@ export function CheckoutClient({
       });
     }
 
-    function onPointSelected(e: Event) {
+    async function onPointSelected(e: Event) {
       const detail = (e as CustomEvent).detail as {
         id?: string;
         address?: { full_address?: string };
@@ -367,8 +371,36 @@ export function CheckoutClient({
       if (!detail?.id) return;
       setSelectedPointId(detail.id);
       setSelectedPointAddress(detail.address?.full_address ?? "");
-      const price = lastYandexPriceRef.current;
-      setPvzPrice(typeof price === "number" ? Math.ceil(price) : null);
+      // Стоимость считаем на своём сервере по id выбранного пункта.
+      setPvzPrice(null);
+      setPvzPriceError(null);
+      setPvzPriceLoading(true);
+      try {
+        const { weight, orderSum } = pvzParamsRef.current;
+        const resp = await fetch("/api/yandex/price", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pointId: detail.id,
+            weightGrams: weight,
+            orderSum,
+          }),
+        });
+        const data = (await resp.json()) as { price?: number | null };
+        if (resp.ok && typeof data.price === "number") {
+          setPvzPrice(data.price);
+        } else {
+          setPvzPriceError(
+            "Не удалось рассчитать стоимость для этого пункта. Попробуйте другой."
+          );
+        }
+      } catch {
+        setPvzPriceError(
+          "Не удалось рассчитать стоимость. Проверьте соединение и попробуйте ещё раз."
+        );
+      } finally {
+        setPvzPriceLoading(false);
+      }
     }
 
     const w = window as unknown as { YaDelivery?: unknown };
@@ -390,7 +422,7 @@ export function CheckoutClient({
       document.removeEventListener("YaNddWidgetPointSelected", onPointSelected);
       yandexWidgetInitedRef.current = false;
     };
-  }, [isYandexPvz, yandexStationId, parcelWeightGrams]);
+  }, [isYandexPvz, yandexStationId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -745,8 +777,9 @@ export function CheckoutClient({
               )}
             </div>
           ) : isYandexPvz ? (
-            // Яндекс ПВЗ: официальный виджет Яндекс Доставки — карта с пунктами,
-            // поиск по адресу и расчёт стоимости внутри виджета.
+            // Яндекс ПВЗ: официальный виджет Яндекс Доставки — карта с пунктами
+            // и поиск по адресу. Стоимость считаем на своём сервере после
+            // выбора пункта (виджету расчёт не доверяем — он нестабилен).
             <div className="flex flex-col gap-3">
               {pvzUnavailable ? (
                 <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -766,10 +799,18 @@ export function CheckoutClient({
                       {selectedPointAddress && (
                         <p className="text-zinc-600">{selectedPointAddress}</p>
                       )}
-                      {pvzPrice !== null && (
+                      {pvzPriceLoading && (
+                        <p className="mt-1 text-zinc-500">
+                          Считаю стоимость доставки…
+                        </p>
+                      )}
+                      {pvzPrice !== null && !pvzPriceLoading && (
                         <p className="mt-1 font-medium">
                           Стоимость доставки: {pvzPrice.toLocaleString("ru-RU")} ₽
                         </p>
+                      )}
+                      {pvzPriceError && !pvzPriceLoading && (
+                        <p className="mt-1 text-red-700">{pvzPriceError}</p>
                       )}
                     </div>
                   )}
