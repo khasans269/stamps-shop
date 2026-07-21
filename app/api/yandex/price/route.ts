@@ -10,6 +10,21 @@ import { getYandexPvzPrice } from "@/lib/yandex";
 
 export const runtime = "nodejs";
 
+// ВРЕМЕННАЯ ДИАГНОСТИКА (удалить, когда расчёт заработает).
+// Показывает, какие переменные YANDEX_* реально видит сервер — только ИМЕНА
+// и длину значения, без самих значений. Нужно, чтобы поймать опечатку в
+// имени переменной на хостинге.
+export async function GET() {
+  const vars = Object.keys(process.env)
+    .filter((k) => k.toUpperCase().includes("YANDEX"))
+    .sort()
+    .map((k) => ({
+      name: k,
+      length: (process.env[k] ?? "").length,
+    }));
+  return NextResponse.json({ yandexEnvVars: vars });
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as Record<
     string,
