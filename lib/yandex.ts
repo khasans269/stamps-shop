@@ -52,7 +52,15 @@ export async function getYandexPvzPrice(params: {
 }): Promise<number> {
   const { token, sourceStation, base } = config();
   if (!token || !sourceStation) {
-    throw new Error("Не заданы YANDEX_DELIVERY_TOKEN / SOURCE_STATION_ID");
+    // Диагностика без утечки секрета: сообщаем только факт наличия и длину,
+    // чтобы понять, какую переменную не отдаёт хостинг.
+    throw new Error(
+      `Нет доступов: YANDEX_DELIVERY_TOKEN=${
+        token ? `есть (${token.length} симв.)` : "ПУСТО"
+      }, YANDEX_DELIVERY_SOURCE_STATION_ID=${
+        sourceStation ? `есть (${sourceStation.length} симв.)` : "ПУСТО"
+      }`
+    );
   }
 
   const body = {
