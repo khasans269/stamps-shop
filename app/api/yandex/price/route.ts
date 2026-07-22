@@ -15,14 +15,24 @@ export const runtime = "nodejs";
 // и длину значения, без самих значений. Нужно, чтобы поймать опечатку в
 // имени переменной на хостинге.
 export async function GET() {
-  const vars = Object.keys(process.env)
-    .filter((k) => k.toUpperCase().includes("YANDEX"))
+  // Отсеиваем системный шум (Node/npm/PATH и т.п.), чтобы остались только
+  // переменные, заданные на хостинге. Значения НЕ отдаём — только длину.
+  const noise =
+    /^(npm_|NODE_|PATH$|HOME$|PWD$|SHELL$|HOSTNAME$|TERM$|LANG$|LC_|USER$|SHLVL$|_$|YARN_|PNPM_|__)/;
+  const all = Object.keys(process.env)
+    .filter((k) => !noise.test(k))
     .sort()
-    .map((k) => ({
-      name: k,
-      length: (process.env[k] ?? "").length,
-    }));
-  return NextResponse.json({ yandexEnvVars: vars });
+    .map((k) => ({ name: k, length: (process.env[k] ?? "").length }));
+
+  return NextResponse.json({
+    totalEnvCount: Object.keys(process.env).length,
+    // Точечная проверка ожидаемого имени.
+    tokenPresent: Object.prototype.hasOwnProperty.call(
+      process.env,
+      "YANDEX_DELIVERY_TOKEN"
+    ),
+    appEnvVars: all,
+  });
 }
 
 export async function POST(request: Request) {
