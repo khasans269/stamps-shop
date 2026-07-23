@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     const ptResp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
       method: "POST",
       headers: auth(token),
-      body: JSON.stringify({ geo_id: geoId, type: ["pickup_point", "terminal"] }),
+      body: JSON.stringify({ geo_id: geoId }),
     });
     const ptText = await ptResp.text();
     if (!ptResp.ok) {
