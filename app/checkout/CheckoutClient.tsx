@@ -116,7 +116,7 @@ export function CheckoutClient({
   yandexStationId: string;
 }) {
   const router = useRouter();
-  const { items, totalCount } = useCart();
+  const { items, totalCount, loaded } = useCart();
 
   // Собираем строки заказа по тем же правилам, что в корзине: только
   // НЕ pending товары, иначе пользователь оплатит то, что вот-вот удалится.
@@ -224,14 +224,15 @@ export function CheckoutClient({
   // потому что относится не к конкретному инпуту, а ко всей попытке.
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Если корзина пустая (например, человек открыл чекаут напрямую по URL
-  // или вкладку, где корзина успела очиститься) — отправляем обратно в
-  // каталог. useEffect, чтобы не дёргать router во время рендера.
+  // Если корзина ДЕЙСТВИТЕЛЬНО пустая — отправляем обратно в корзину.
+  // Важно дождаться loaded: при обновлении страницы корзина ещё не прочитана
+  // из localStorage и на первый рендер выглядит пустой — без этой проверки
+  // чекаут ошибочно редиректил на /cart при каждом обновлении.
   useEffect(() => {
-    if (orderRows.length === 0) {
+    if (loaded && orderRows.length === 0) {
       router.replace("/cart");
     }
-  }, [orderRows.length, router]);
+  }, [loaded, orderRows.length, router]);
 
   // ── Память формы ──────────────────────────────────────────────────────────
   // Восстанавливаем ранее введённые данные при возврате на чекаут. Читаем
@@ -573,7 +574,17 @@ export function CheckoutClient({
     }
   }
 
-  // Пока эффект редиректа не отработал — отдаём пустой блок.
+  // Пока корзина грузится из localStorage — показываем загрузку и НЕ редиректим.
+  // Иначе при обновлении страницы чекаут мигал бы и уходил на /cart.
+  if (!loaded) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-20 text-center text-zinc-500">
+        Загрузка…
+      </div>
+    );
+  }
+
+  // Корзина загружена и пуста — редирект уже запущен эффектом, отдаём пустой блок.
   if (orderRows.length === 0) {
     return null;
   }

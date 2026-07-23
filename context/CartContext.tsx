@@ -39,6 +39,8 @@ interface CartContextValue {
   pendingDeletions: string[];
   // Метка времени, когда таймер удаления истечёт. null — нет активных удалений.
   pendingExpiresAt: number | null;
+  // Загрузилась ли корзина из localStorage (для отличия "пусто" от "ещё не читали").
+  loaded: boolean;
   // Действия
   addItem: (productId: string) => void;
   removeItem: (productId: string) => void;
@@ -61,6 +63,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [pendingDeletions, setPendingDeletions] = useState<string[]>([]);
   // Когда сработает таймер. null — таймера нет.
   const [pendingExpiresAt, setPendingExpiresAt] = useState<number | null>(null);
+  // Загрузилась ли корзина из localStorage. До этого момента нельзя судить,
+  // пуста ли корзина (иначе чекаут ошибочно редиректит на /cart при обновлении).
+  const [loaded, setLoaded] = useState(false);
   // Ссылка на текущий таймер — нужна, чтобы можно было его отменить.
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,6 +80,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       // Если данные повреждены — просто начинаем с пустой корзины.
+    } finally {
+      // Корзина прочитана (пусть даже пустая) — теперь можно судить о пустоте.
+      setLoaded(true);
     }
   }, []);
 
@@ -257,6 +265,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         totalCount,
         pendingDeletions,
         pendingExpiresAt,
+        loaded,
         addItem,
         removeItem,
         updateQuantity,
