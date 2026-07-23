@@ -85,6 +85,42 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(allItems));
   }, [allItems]);
 
+  // Пересинхронизация при возврате на вкладку / восстановлении из bfcache.
+  // Фоновые вкладки тормозят таймеры (в т.ч. таймер "отложенного удаления"),
+  // из-за чего при возврате корзина могла залипнуть в промежуточном состоянии
+  // (например, пропадала кнопка "К оформлению" до обновления страницы).
+  // Делаем так, чтобы возврат на вкладку работал как обновление: перечитываем
+  // корзину из localStorage (источник правды) и сбрасываем pending-состояние.
+  useEffect(() => {
+    function resync() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        setAllItems(stored ? (JSON.parse(stored) as CartItem[]) : []);
+      } catch {
+        // повреждённые данные — оставляем текущее состояние
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setPendingDeletions([]);
+      setPendingExpiresAt(null);
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") resync();
+    }
+    function onPageShow(e: PageTransitionEvent) {
+      // e.persisted === true — страница восстановлена из bfcache (кнопка "назад").
+      if (e.persisted) resync();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, []);
+
   // При размонтировании провайдера — на всякий случай чистим таймер.
   useEffect(() => {
     return () => {
