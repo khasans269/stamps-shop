@@ -7,6 +7,10 @@ import { useEffect, useRef, useState } from "react";
 // (5post + ПВЗ Яндекса + постаматы) → выбор пункта → серверный расчёт цены.
 // Виджет Яндекса показывает только ПВЗ Яндекс Маркета, поэтому используем API.
 
+// Город из российской базы СДЭК (единый источник для СДЭК и Яндекса — так в
+// подсказках нет иностранных городов и формат города общий для служб).
+type City = { cityCode: number; name: string; region: string };
+// Разрешённый по названию идентификатор города в Яндексе.
 type Geo = { geoId: number; address: string };
 type Point = {
   id: string;
@@ -101,7 +105,7 @@ export function YandexPointPicker({
     sel: { pointId: string; address: string; price: number } | null
   ) => void;
 }) {
-  const [suggestions, setSuggestions] = useState<Geo[]>([]);
+  const [suggestions, setSuggestions] = useState<City[]>([]);
   const [geo, setGeo] = useState<Geo | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
   const [pointSearch, setPointSearch] = useState("");
@@ -137,8 +141,9 @@ export function YandexPointPicker({
     }
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/yandex/cities?q=${encodeURIComponent(q)}`);
-        const d = (await r.json()) as { cities?: Geo[] };
+        // Список городов берём из российской базы СДЭК — там только РФ.
+        const r = await fetch(`/api/cdek/cities?q=${encodeURIComponent(q)}`);
+        const d = (await r.json()) as { cities?: City[] };
         setSuggestions(Array.isArray(d.cities) ? d.cities : []);
       } catch {
         setSuggestions([]);
@@ -147,12 +152,12 @@ export function YandexPointPicker({
     return () => clearTimeout(t);
   }, [cityQuery]);
 
-  // ── Выбор города → грузим пункты ───────────────────────────────────────────
-  async function chooseCity(g: Geo) {
+  // ── Выбор города (из базы СДЭК) → geo_id Яндекса по названию → пункты ───────
+  async function chooseCity(c: City) {
     suppressSuggest.current = true;
-    setGeo(g);
-    onCityQueryChange(g.address);
+    onCityQueryChange(c.region ? `${c.name}, ${c.region}` : c.name);
     setSuggestions([]);
+    setGeo(null);
     setPoints([]);
     setSelectedId(null);
     setPrice(null);
@@ -163,6 +168,18 @@ export function YandexPointPicker({
     onSelect(null);
     setLoading(true);
     try {
+      // По названию города узнаём geo_id Яндекса (регион помогает не спутать
+      // города-тёзки).
+      const gr = await fetch(
+        `/api/yandex/cities?q=${encodeURIComponent(c.name)}`
+      );
+      const gd = (await gr.json()) as { cities?: Geo[] };
+      const g = Array.isArray(gd.cities) ? gd.cities[0] : undefined;
+      if (!g) {
+        setError("Не удалось определить город в Яндекс Доставке.");
+        return;
+      }
+      setGeo(g);
       const r = await fetch(`/api/yandex/points?geoId=${g.geoId}`);
       const d = (await r.json()) as { points?: Point[] };
       const all = Array.isArray(d.points) ? d.points : [];
@@ -427,14 +444,17 @@ export function YandexPointPicker({
         />
         {suggestions.length > 0 && (
           <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg">
-            {suggestions.map((g) => (
-              <li key={`${g.geoId}`}>
+            {suggestions.map((c) => (
+              <li key={`${c.cityCode}`}>
                 <button
                   type="button"
-                  onClick={() => chooseCity(g)}
+                  onClick={() => chooseCity(c)}
                   className="block w-full px-4 py-2 text-left text-sm hover:bg-zinc-50"
                 >
-                  <span className="text-zinc-900">{g.address}</span>
+                  <span className="font-medium text-zinc-900">{c.name}</span>
+                  {c.region && (
+                    <span className="text-zinc-500"> · {c.region}</span>
+                  )}
                 </button>
               </li>
             ))}
