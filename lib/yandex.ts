@@ -33,6 +33,105 @@ export function isYandexPricingConfigured(): boolean {
   return Boolean(token && sourceStation);
 }
 
+// Общие заголовки авторизации для API Яндекс Доставки.
+function authHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+}
+
+// ── Подсказка населённого пункта (geo_id) ────────────────────────────────────
+// Метод 2.01 location/detect: по названию города возвращает geo_id.
+export interface YandexGeo {
+  geoId: number;
+  address: string;
+}
+
+export async function suggestYandexGeo(query: string): Promise<YandexGeo[]> {
+  // Браузер часто подставляет «г. Сибай» — Яндекс по такой строке ищет хуже.
+  const q = query
+    .trim()
+    .replace(/^(г\.?|город)\s+/i, "")
+    .trim();
+  if (q.length < 2) return [];
+  const { token, base } = config();
+  if (!token) throw new Error("Не задан YANDEX_DELIVERY_TOKEN");
+  const resp = await fetch(`${base}/api/b2b/platform/location/detect`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ location: q }),
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`Яндекс location/detect ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const data = JSON.parse(text) as {
+    variants?: Array<{ geo_id?: number; address?: string }>;
+  };
+  return (data.variants ?? [])
+    .filter((v) => typeof v.geo_id === "number")
+    .slice(0, 15)
+    .map((v) => ({ geoId: v.geo_id as number, address: v.address ?? q }));
+}
+
+// ── Список пунктов выдачи по geo_id ──────────────────────────────────────────
+// Метод 2.02 pickup-points/list: по geo_id возвращает все ПВЗ/постаматы города
+// со всеми операторами (в т.ч. 5post) — это то, чего не умеет виджет.
+export interface YandexPoint {
+  id: string; // platform_station_id — идентификатор для расчёта цены
+  operatorId: string; // "5post", "market_l4g", ...
+  name: string; // "5 Post (Пятерочка)", "Пункт выдачи Яндекса", ...
+  type: "pickup_point" | "terminal";
+  address: string;
+  comment: string; // инструкция как найти пункт
+  lat: number | null;
+  lon: number | null;
+}
+
+interface RawYandexPoint {
+  id?: string;
+  operator_id?: string;
+  name?: string;
+  type?: string;
+  position?: { latitude?: number; longitude?: number };
+  address?: { full_address?: string };
+  instruction?: string;
+}
+
+export async function listYandexPoints(geoId: number): Promise<YandexPoint[]> {
+  const { token, base } = config();
+  if (!token) throw new Error("Не задан YANDEX_DELIVERY_TOKEN");
+  const resp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ geo_id: geoId }),
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(
+      `Яндекс pickup-points/list ${resp.status}: ${text.slice(0, 200)}`
+    );
+  }
+  const data = JSON.parse(text) as unknown;
+  const raw: RawYandexPoint[] = Array.isArray(data)
+    ? (data as RawYandexPoint[])
+    : ((data as { points?: RawYandexPoint[] }).points ?? []);
+  return raw
+    .filter((p) => p.id && (p.type === "pickup_point" || p.type === "terminal"))
+    .map((p) => ({
+      id: p.id as string,
+      operatorId: p.operator_id ?? "",
+      name: p.name ?? "",
+      type: p.type === "terminal" ? "terminal" : "pickup_point",
+      address: p.address?.full_address ?? "",
+      comment: p.instruction ?? "",
+      lat: p.position?.latitude ?? null,
+      lon: p.position?.longitude ?? null,
+    }));
+}
+
 // Ответ метода: { pricing_total: "225.7 RUB", delivery_days: 7 }.
 // Достаём число рублей из строки вида "225.7 RUB".
 function parseRub(pricingTotal: string): number {
