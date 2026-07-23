@@ -41,12 +41,45 @@ type YMaps = {
 
 const MAP_CONTAINER_ID = "yandex-points-map";
 
-// Понятная подпись оператора/типа пункта.
-function operatorLabel(p: Point): string {
-  if (p.type === "terminal") return "Постамат";
-  if (p.operatorId === "5post") return "5Post — касса в «Пятёрочке»/«Перекрёстке»";
-  if (p.operatorId === "market_l4g") return "ПВЗ Яндекс Маркета";
-  return "Пункт выдачи";
+// Стиль оператора/типа пункта: пресет метки на карте, цвет точки в списке,
+// полная и короткая подписи. Так значки 5Post / Яндекс Маркета / постаматов
+// визуально различаются и на карте, и в списке.
+function operatorStyle(p: Point): {
+  preset: string;
+  color: string;
+  label: string;
+  short: string;
+} {
+  if (p.type === "terminal") {
+    return {
+      preset: "islands#blueDotIcon",
+      color: "#2f6ff0",
+      label: "Постамат",
+      short: "Постамат",
+    };
+  }
+  if (p.operatorId === "5post") {
+    return {
+      preset: "islands#greenDotIcon",
+      color: "#2db34a",
+      label: "5Post — касса в «Пятёрочке»/«Перекрёстке»",
+      short: "5Post",
+    };
+  }
+  if (p.operatorId === "market_l4g") {
+    return {
+      preset: "islands#yellowDotIcon",
+      color: "#f2c200",
+      label: "ПВЗ Яндекс Маркета",
+      short: "Яндекс Маркет",
+    };
+  }
+  return {
+    preset: "islands#grayDotIcon",
+    color: "#9ca3af",
+    label: "Пункт выдачи",
+    short: "ПВЗ",
+  };
 }
 
 export function YandexPointPicker({
@@ -192,29 +225,64 @@ export function YandexPointPicker({
           { suppressMapOpenBlock: true }
         );
         mapRef.current = map;
-        const clusterer = new ymaps.Clusterer({
-          preset: "islands#invertedBlueClusterIcons",
-          groupByCoordinates: false,
-        });
-        const placemarks = withCoords.map((p) => {
-          const pm = new ymaps.Placemark(
-            [p.lat as number, p.lon as number],
-            {
-              balloonContentHeader: operatorLabel(p),
-              balloonContentBody: `${p.address}${p.comment ? `<br>${p.comment}` : ""}`,
-              hintContent: p.address,
-            },
-            { preset: "islands#blueDotIcon" }
-          );
-          pm.events.add("click", () => choosePointRef.current(p));
-          return pm;
-        });
-        clusterer.add(placemarks);
-        map.geoObjects.add(clusterer);
-        map.setBounds(clusterer.getBounds(), {
-          checkZoomRange: true,
-          zoomMargin: 30,
-        });
+        // Отдельный кластер на каждый тип оператора — чтобы и в кластерах цвет
+        // соответствовал 5Post / Яндекс Маркету / постаматам.
+        const clusterPresetByKind: Record<string, string> = {
+          terminal: "islands#invertedBlueClusterIcons",
+          "5post": "islands#invertedGreenClusterIcons",
+          market_l4g: "islands#invertedYellowClusterIcons",
+          other: "islands#invertedGrayClusterIcons",
+        };
+        const kindOf = (p: Point): string =>
+          p.type === "terminal"
+            ? "terminal"
+            : p.operatorId === "5post"
+              ? "5post"
+              : p.operatorId === "market_l4g"
+                ? "market_l4g"
+                : "other";
+
+        const groups = new Map<string, Point[]>();
+        for (const p of withCoords) {
+          const k = kindOf(p);
+          const arr = groups.get(k);
+          if (arr) arr.push(p);
+          else groups.set(k, [p]);
+        }
+        for (const [kind, groupPoints] of groups) {
+          const clusterer = new ymaps.Clusterer({
+            preset:
+              clusterPresetByKind[kind] ?? "islands#invertedGrayClusterIcons",
+            groupByCoordinates: false,
+          });
+          const placemarks = groupPoints.map((p) => {
+            const st = operatorStyle(p);
+            const pm = new ymaps.Placemark(
+              [p.lat as number, p.lon as number],
+              {
+                balloonContentHeader: st.label,
+                balloonContentBody: `${p.address}${p.comment ? `<br>${p.comment}` : ""}`,
+                hintContent: p.address,
+              },
+              { preset: st.preset }
+            );
+            pm.events.add("click", () => choosePointRef.current(p));
+            return pm;
+          });
+          clusterer.add(placemarks);
+          map.geoObjects.add(clusterer);
+        }
+
+        // Границы карты по всем точкам.
+        const lats = withCoords.map((p) => p.lat as number);
+        const lons = withCoords.map((p) => p.lon as number);
+        map.setBounds(
+          [
+            [Math.min(...lats), Math.min(...lons)],
+            [Math.max(...lats), Math.max(...lons)],
+          ],
+          { checkZoomRange: true, zoomMargin: 30 }
+        );
       });
     }
 
@@ -249,6 +317,16 @@ export function YandexPointPicker({
           p.name.toLowerCase().includes(search)
       )
     : points;
+
+  // Легенда карты: уникальные операторы среди найденных точек.
+  const legendItems = Array.from(
+    new Map(
+      points.map((p) => {
+        const s = operatorStyle(p);
+        return [s.short, { short: s.short, color: s.color }];
+      })
+    ).values()
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -317,13 +395,28 @@ export function YandexPointPicker({
         </div>
       )}
 
-      {/* Карта пунктов */}
+      {/* Карта пунктов + легенда цветов операторов */}
       {showMap && points.length > 0 && (
-        <div
-          id={MAP_CONTAINER_ID}
-          style={{ width: "100%", height: "440px" }}
-          className="overflow-hidden rounded-xl border border-zinc-200"
-        />
+        <>
+          <div
+            id={MAP_CONTAINER_ID}
+            style={{ width: "100%", height: "440px" }}
+            className="overflow-hidden rounded-xl border border-zinc-200"
+          />
+          {legendItems.length > 1 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-xs text-zinc-600">
+              {legendItems.map((l) => (
+                <span key={l.short} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: l.color }}
+                  />
+                  {l.short}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Список пунктов (когда карта скрыта) */}
@@ -352,8 +445,12 @@ export function YandexPointPicker({
                     <p className="text-sm font-medium text-zinc-900">
                       {p.address || p.name}
                     </p>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      {operatorLabel(p)}
+                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
+                      <span
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: operatorStyle(p).color }}
+                      />
+                      {operatorStyle(p).label}
                     </p>
                     {active && priceLoading && (
                       <p className="mt-1 text-xs text-zinc-500">
