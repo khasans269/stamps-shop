@@ -1,13 +1,23 @@
-// ВРЕМЕННЫЙ диагностический роут (удалить после проверки).
-// Проверяем, каких операторов ПВЗ (в т.ч. 5post) реально отдаёт API Яндекса
-// по нашему аккаунту. Метод pickup-points/list с пустым телом возвращает все
-// доступные точки. Агрегируем по операторам, чтобы не тащить весь список.
+// ВРЕМЕННЫЙ диагностический роут (удалить после сборки выбора ПВЗ).
+// GET /api/yandex/points-test?geo=Сибай
+//   1) location/detect → geo_id по названию города;
+//   2) pickup-points/list по geo_id → точки (все операторы, вкл. 5post);
+//   3) возвращаем счётчик операторов и ПОЛНЫЙ пример точки, чтобы увидеть
+//      реальную форму вложенных полей (координаты, адрес, расписание).
 
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+function auth(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+}
+
+export async function GET(request: Request) {
   const token = process.env.YANDEX_DELIVERY_TOKEN || "";
   const base = (
     process.env.YANDEX_DELIVERY_API_BASE || "https://b2b-authproxy.taxi.yandex.net"
@@ -15,49 +25,65 @@ export async function GET() {
   if (!token) {
     return NextResponse.json({ error: "нет YANDEX_DELIVERY_TOKEN" }, { status: 500 });
   }
+  const city = new URL(request.url).searchParams.get("geo") || "Сибай";
+
   try {
-    const resp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
+    // 1) geo_id
+    const geoResp = await fetch(`${base}/api/b2b/platform/location/detect`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({}),
+      headers: auth(token),
+      body: JSON.stringify({ location: city }),
     });
-    const text = await resp.text();
-    if (!resp.ok) {
+    const geoText = await geoResp.text();
+    if (!geoResp.ok) {
       return NextResponse.json(
-        { status: resp.status, body: text.slice(0, 500) },
+        { step: "location/detect", status: geoResp.status, body: geoText.slice(0, 400) },
         { status: 502 }
       );
     }
-    const data = JSON.parse(text) as unknown;
-    // Ответ может быть массивом точек или { points: [...] }.
-    const points: Array<Record<string, unknown>> = Array.isArray(data)
-      ? (data as Array<Record<string, unknown>>)
-      : (((data as Record<string, unknown>).points as Array<
+    const geoData = JSON.parse(geoText) as {
+      variants?: Array<{ geo_id?: number; address?: string }>;
+    };
+    const variants = geoData.variants ?? [];
+    const geoId = variants[0]?.geo_id;
+    if (typeof geoId !== "number") {
+      return NextResponse.json({ step: "geo", city, variants }, { status: 200 });
+    }
+
+    // 2) точки по geo_id
+    const ptResp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
+      method: "POST",
+      headers: auth(token),
+      body: JSON.stringify({ geo_id: geoId, type: ["pickup_point", "terminal"] }),
+    });
+    const ptText = await ptResp.text();
+    if (!ptResp.ok) {
+      return NextResponse.json(
+        { step: "pickup-points/list", status: ptResp.status, body: ptText.slice(0, 400) },
+        { status: 502 }
+      );
+    }
+    const ptData = JSON.parse(ptText) as unknown;
+    const points: Array<Record<string, unknown>> = Array.isArray(ptData)
+      ? (ptData as Array<Record<string, unknown>>)
+      : (((ptData as Record<string, unknown>).points as Array<
           Record<string, unknown>
         >) ?? []);
 
     const operators: Record<string, number> = {};
     for (const p of points) {
-      const op = String(p.operator_id ?? p.operator ?? "unknown");
+      const op = String(p.operator_id ?? "unknown");
       operators[op] = (operators[op] ?? 0) + 1;
     }
-    // Пример одной точки — чтобы увидеть реальные имена полей.
-    const sample = points[0]
-      ? Object.keys(points[0]).reduce((acc, k) => {
-          const v = (points[0] as Record<string, unknown>)[k];
-          acc[k] = typeof v === "object" ? "[object]" : v;
-          return acc;
-        }, {} as Record<string, unknown>)
-      : null;
 
     return NextResponse.json({
+      city,
+      geoId,
+      geoVariants: variants.slice(0, 5),
       total: points.length,
       operators,
-      sampleKeys: sample,
+      // Полный первый пункт — чтобы увидеть форму position/address/schedule.
+      samplePoint: points[0] ?? null,
     });
   } catch (err) {
     return NextResponse.json(
