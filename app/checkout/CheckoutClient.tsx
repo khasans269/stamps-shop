@@ -159,6 +159,10 @@ export function CheckoutClient({
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedPointAddress, setSelectedPointAddress] = useState("");
   const [pvzPrice, setPvzPrice] = useState<number | null>(null);
+  // Общий текст города для выбора ПВЗ — сохраняется при переключении службы
+  // (СДЭК ↔ Яндекс), чтобы не вводить город заново. ID города у служб разные,
+  // поэтому общий — сам текст, а пункт каждая служба подберёт сама.
+  const [pvzCityQuery, setPvzCityQuery] = useState("");
 
   const isPickup = delivery === PICKUP_VALUE;
   const isCdekPvz = delivery === CDEK_PVZ_VALUE;
@@ -654,6 +658,8 @@ export function CheckoutClient({
                 orderSum={totalPrice}
                 weightGrams={parcelWeightGrams}
                 mapsApiKey={mapsApiKey}
+                cityQuery={pvzCityQuery}
+                onCityQueryChange={setPvzCityQuery}
                 onSelect={(sel) => {
                   if (sel) {
                     setSelectedPointId(sel.pointId);
@@ -694,6 +700,8 @@ export function CheckoutClient({
                     orderSum={totalPrice}
                     weightGrams={parcelWeightGrams}
                     mapsApiKey={mapsApiKey}
+                    cityQuery={pvzCityQuery}
+                    onCityQueryChange={setPvzCityQuery}
                     onSelect={(sel) => {
                       if (sel) {
                         setSelectedPointId(sel.pointId);

@@ -86,17 +86,21 @@ export function YandexPointPicker({
   orderSum,
   weightGrams,
   mapsApiKey,
+  cityQuery,
+  onCityQueryChange,
   onSelect,
 }: {
   orderSum: number;
   weightGrams: number;
   // Ключ Яндекс.Карт для карты пунктов. Пусто — кнопка «на карте» не показывается.
   mapsApiKey: string;
+  // Текст города — общий для служб доставки (приходит из чекаута).
+  cityQuery: string;
+  onCityQueryChange: (q: string) => void;
   onSelect: (
     sel: { pointId: string; address: string; price: number } | null
   ) => void;
 }) {
-  const [cityQuery, setCityQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Geo[]>([]);
   const [geo, setGeo] = useState<Geo | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
@@ -108,6 +112,7 @@ export function YandexPointPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [geoLocating, setGeoLocating] = useState(false);
   const suppressSuggest = useRef(false);
 
   // ── Автоподсказка городов (дебаунс 300 мс) ─────────────────────────────────
@@ -138,7 +143,7 @@ export function YandexPointPicker({
   async function chooseCity(g: Geo) {
     suppressSuggest.current = true;
     setGeo(g);
-    setCityQuery(g.address);
+    onCityQueryChange(g.address);
     setSuggestions([]);
     setPoints([]);
     setSelectedId(null);
@@ -162,6 +167,62 @@ export function YandexPointPicker({
     } finally {
       setLoading(false);
     }
+  }
+
+  // ── «Рядом со мной» → точная геолокация → ближайшие пункты ─────────────────
+  function findNearMe() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setError("Геолокация не поддерживается вашим браузером.");
+      return;
+    }
+    setError(null);
+    setGeoLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        // Синтетический «город» — чтобы отрисовался список пунктов.
+        setGeo({ geoId: -1, address: "рядом с вами" });
+        setSuggestions([]);
+        setSelectedId(null);
+        setPrice(null);
+        setPriceError(null);
+        setShowMap(false);
+        setPoints([]);
+        onSelect(null);
+        setLoading(true);
+        try {
+          const r = await fetch(
+            `/api/yandex/points?lat=${latitude}&lon=${longitude}`
+          );
+          const d = (await r.json()) as { points?: Point[] };
+          const all = Array.isArray(d.points) ? d.points : [];
+          setPoints(all);
+          if (all.length === 0) {
+            setError(
+              "Рядом не нашлось пунктов выдачи — попробуйте ввести город."
+            );
+          }
+        } catch {
+          setError("Не удалось загрузить пункты. Попробуйте ещё раз.");
+        } finally {
+          setLoading(false);
+          setGeoLocating(false);
+        }
+      },
+      (err) => {
+        setGeoLocating(false);
+        if (err.code === err.PERMISSION_DENIED) {
+          setError(
+            "Доступ к геолокации запрещён. Разрешите его в браузере или введите город вручную."
+          );
+        } else {
+          setError(
+            "Не удалось определить местоположение. Введите город вручную."
+          );
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   }
 
   // ── Выбор пункта → серверный расчёт цены ───────────────────────────────────
@@ -220,7 +281,7 @@ export function YandexPointPicker({
           {
             center: [withCoords[0].lat as number, withCoords[0].lon as number],
             zoom: 11,
-            controls: ["zoomControl", "geolocationControl"],
+            controls: ["zoomControl"],
           },
           { suppressMapOpenBlock: true }
         );
@@ -336,7 +397,7 @@ export function YandexPointPicker({
           type="text"
           value={cityQuery}
           onChange={(e) => {
-            setCityQuery(e.target.value);
+            onCityQueryChange(e.target.value);
             setGeo(null);
           }}
           onKeyDown={(e) => {
@@ -369,6 +430,16 @@ export function YandexPointPicker({
           </ul>
         )}
       </div>
+
+      {/* Поиск ближайших пунктов по точной геолокации браузера */}
+      <button
+        type="button"
+        onClick={findNearMe}
+        disabled={geoLocating}
+        className="self-start rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {geoLocating ? "Определяю местоположение…" : "Найти пункты рядом со мной"}
+      </button>
 
       {loading && <p className="text-sm text-zinc-500">Загружаю пункты…</p>}
 

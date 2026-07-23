@@ -81,3 +81,12 @@ export function cdekRetailDeliveryPrice(
   const cost = baseRub + nds + insurance + CDEK_MARKUP.packagingRub;
   return Math.ceil(cost / (1 - CDEK_MARKUP.taxRate));
 }
+
+// Розничная цена доставки Яндекса. В отличие от СДЭК, цена Яндекса УЖЕ включает
+// их НДС и страховку (сумму заказа передаём как оценочную стоимость, от неё
+// считается страховка). Поэтому НДС и страховку повторно НЕ добавляем — только
+// то, чего у Яндекса нет: упаковку продавца и гросс-ап под НПД 4%.
+export function yandexRetailDeliveryPrice(yandexBaseRub: number): number {
+  const cost = yandexBaseRub + CDEK_MARKUP.packagingRub;
+  return Math.ceil(cost / (1 - CDEK_MARKUP.taxRate));
+}

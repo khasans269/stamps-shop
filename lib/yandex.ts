@@ -11,7 +11,7 @@
 //   YANDEX_DELIVERY_SOURCE_STATION_ID — id станции отгрузки (наш склад);
 //   YANDEX_DELIVERY_API_BASE — по умолчанию боевой хост.
 
-import { DEFAULT_PARCEL_CM } from "@/lib/delivery";
+import { DEFAULT_PARCEL_CM, yandexRetailDeliveryPrice } from "@/lib/delivery";
 
 // Боевой хост API. Тестовый — https://b2b.taxi.tst.yandex.net.
 const PROD_BASE = "https://b2b-authproxy.taxi.yandex.net";
@@ -100,20 +100,8 @@ interface RawYandexPoint {
   instruction?: string;
 }
 
-export async function listYandexPoints(geoId: number): Promise<YandexPoint[]> {
-  const { token, base } = config();
-  if (!token) throw new Error("Не задан YANDEX_DELIVERY_TOKEN");
-  const resp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ geo_id: geoId }),
-  });
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(
-      `Яндекс pickup-points/list ${resp.status}: ${text.slice(0, 200)}`
-    );
-  }
+// Разбор ответа pickup-points/list в наши точки (общий для обоих режимов).
+function parseYandexPoints(text: string): YandexPoint[] {
   const data = JSON.parse(text) as unknown;
   const raw: RawYandexPoint[] = Array.isArray(data)
     ? (data as RawYandexPoint[])
@@ -130,6 +118,60 @@ export async function listYandexPoints(geoId: number): Promise<YandexPoint[]> {
       lat: p.position?.latitude ?? null,
       lon: p.position?.longitude ?? null,
     }));
+}
+
+export async function listYandexPoints(geoId: number): Promise<YandexPoint[]> {
+  const { token, base } = config();
+  if (!token) throw new Error("Не задан YANDEX_DELIVERY_TOKEN");
+  const resp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ geo_id: geoId }),
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(
+      `Яндекс pickup-points/list ${resp.status}: ${text.slice(0, 200)}`
+    );
+  }
+  return parseYandexPoints(text);
+}
+
+// Пункты рядом с координатами — для «рядом со мной» (точная геолокация).
+// Метод принимает координатную рамку (CoordinateInterval по широте/долготе).
+export async function listYandexPointsNear(
+  lat: number,
+  lon: number
+): Promise<YandexPoint[]> {
+  const { token, base } = config();
+  if (!token) throw new Error("Не задан YANDEX_DELIVERY_TOKEN");
+  const dLat = 0.12; // ~13 км по широте
+  const dLon = 0.2; // ~сопоставимо по долготе на средних широтах
+  const resp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      latitude: { from: lat - dLat, to: lat + dLat },
+      longitude: { from: lon - dLon, to: lon + dLon },
+    }),
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(
+      `Яндекс pickup-points/list(near) ${resp.status}: ${text.slice(0, 200)}`
+    );
+  }
+  const points = parseYandexPoints(text);
+  // Ближайшие — первыми (грубая метрика с поправкой на широту, для сортировки
+  // достаточно). Точки без координат — в конец.
+  const distSq = (p: YandexPoint): number => {
+    if (p.lat == null || p.lon == null) return Number.POSITIVE_INFINITY;
+    const dy = p.lat - lat;
+    const dx = (p.lon - lon) * Math.cos((lat * Math.PI) / 180);
+    return dy * dy + dx * dx;
+  };
+  points.sort((a, b) => distSq(a) - distSq(b));
+  return points.slice(0, 60);
 }
 
 // Ответ метода: { pricing_total: "225.7 RUB", delivery_days: 7 }.
@@ -210,5 +252,6 @@ export async function getYandexPvzPrice(params: {
     throw new Error(`В ответе нет pricing_total: ${text.slice(0, 200)}`);
   }
 
-  return Math.ceil(parseRub(data.pricing_total));
+  // Цену Яндекса оборачиваем розничной наценкой (упаковка + налог).
+  return yandexRetailDeliveryPrice(parseRub(data.pricing_total));
 }

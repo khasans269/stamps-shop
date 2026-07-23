@@ -44,17 +44,21 @@ export function CdekPointPicker({
   orderSum,
   weightGrams,
   mapsApiKey,
+  cityQuery,
+  onCityQueryChange,
   onSelect,
 }: {
   orderSum: number;
   weightGrams: number;
   // Ключ Яндекс.Карт для карты пунктов. Пусто — кнопка «на карте» не показывается.
   mapsApiKey: string;
+  // Текст города — общий для служб доставки (приходит из чекаута).
+  cityQuery: string;
+  onCityQueryChange: (q: string) => void;
   onSelect: (
     sel: { pointId: string; address: string; price: number } | null
   ) => void;
 }) {
-  const [cityQuery, setCityQuery] = useState("");
   const [suggestions, setSuggestions] = useState<City[]>([]);
   const [city, setCity] = useState<City | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
@@ -99,7 +103,7 @@ export function CdekPointPicker({
   async function chooseCity(c: City) {
     suppressSuggest.current = true;
     setCity(c);
-    setCityQuery(c.region ? `${c.name}, ${c.region}` : c.name);
+    onCityQueryChange(c.region ? `${c.name}, ${c.region}` : c.name);
     setSuggestions([]);
     setPoints([]);
     setPrices({ pvz: null, postamat: null });
@@ -179,7 +183,7 @@ export function CdekPointPicker({
           {
             center: [withCoords[0].lat as number, withCoords[0].lon as number],
             zoom: 11,
-            controls: ["zoomControl", "geolocationControl"],
+            controls: ["zoomControl"],
           },
           { suppressMapOpenBlock: true }
         );
@@ -247,7 +251,7 @@ export function CdekPointPicker({
           type="text"
           value={cityQuery}
           onChange={(e) => {
-            setCityQuery(e.target.value);
+            onCityQueryChange(e.target.value);
             setCity(null);
           }}
           onKeyDown={(e) => {
