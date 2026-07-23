@@ -121,7 +121,15 @@ export function YandexPointPicker({
       suppressSuggest.current = false;
       return;
     }
-    const q = cityQuery.trim();
+    // Берём только город (до запятой) и чистим «г.»/«… г» — иначе при переносе
+    // города между службами (напр. «Сибай, Республика Башкортостан») подсказки
+    // не находятся, пока текст не сотрёшь до чистого названия.
+    const q = cityQuery
+      .split(",")[0]
+      .trim()
+      .replace(/^(г\.?|город)\s+/i, "")
+      .replace(/\s+г\.?$/i, "")
+      .trim();
     if (q.length < 2) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSuggestions([]);
@@ -221,7 +229,10 @@ export function YandexPointPicker({
           );
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      // enableHighAccuracy:false — на десктопе GPS нет, точный режим там часто
+      // падает с «position unavailable»; сетевой геолокации достаточно, чтобы
+      // найти ближайшие ПВЗ. maximumAge разрешает недавнюю кэш-позицию.
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
     );
   }
 
