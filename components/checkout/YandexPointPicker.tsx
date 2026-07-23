@@ -48,6 +48,16 @@ const MAP_CONTAINER_ID = "yandex-points-map";
 // Стиль оператора/типа пункта: пресет метки на карте, цвет точки в списке,
 // полная и короткая подписи. Так значки 5Post / Яндекс Маркета / постаматов
 // визуально различаются и на карте, и в списке.
+// Склонение слова «день» под число: 1 день, 2 дня, 5 дней.
+function daysLabel(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  let word = "дней";
+  if (mod10 === 1 && mod100 !== 11) word = "день";
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) word = "дня";
+  return `${n} ${word}`;
+}
+
 function operatorStyle(p: Point): {
   preset: string;
   color: string;
@@ -111,12 +121,12 @@ export function YandexPointPicker({
   const [pointSearch, setPointSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [price, setPrice] = useState<number | null>(null);
+  const [days, setDays] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
-  const [geoLocating, setGeoLocating] = useState(false);
   const suppressSuggest = useRef(false);
 
   // ── Автоподсказка городов (дебаунс 300 мс) ─────────────────────────────────
@@ -194,69 +204,11 @@ export function YandexPointPicker({
     }
   }
 
-  // ── «Рядом со мной» → точная геолокация → ближайшие пункты ─────────────────
-  function findNearMe() {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setError("Геолокация не поддерживается вашим браузером.");
-      return;
-    }
-    setError(null);
-    setGeoLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        // Синтетический «город» — чтобы отрисовался список пунктов.
-        setGeo({ geoId: -1, address: "рядом с вами" });
-        setSuggestions([]);
-        setSelectedId(null);
-        setPrice(null);
-        setPriceError(null);
-        setShowMap(false);
-        setPoints([]);
-        onSelect(null);
-        setLoading(true);
-        try {
-          const r = await fetch(
-            `/api/yandex/points?lat=${latitude}&lon=${longitude}`
-          );
-          const d = (await r.json()) as { points?: Point[] };
-          const all = Array.isArray(d.points) ? d.points : [];
-          setPoints(all);
-          if (all.length === 0) {
-            setError(
-              "Рядом не нашлось пунктов выдачи — попробуйте ввести город."
-            );
-          }
-        } catch {
-          setError("Не удалось загрузить пункты. Попробуйте ещё раз.");
-        } finally {
-          setLoading(false);
-          setGeoLocating(false);
-        }
-      },
-      (err) => {
-        setGeoLocating(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          setError(
-            "Доступ к геолокации запрещён. Разрешите его в браузере или введите город вручную."
-          );
-        } else {
-          setError(
-            "Не удалось определить местоположение. Введите город вручную."
-          );
-        }
-      },
-      // enableHighAccuracy:false — на десктопе GPS нет, точный режим там часто
-      // падает с «position unavailable»; сетевой геолокации достаточно, чтобы
-      // найти ближайшие ПВЗ. maximumAge разрешает недавнюю кэш-позицию.
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-    );
-  }
-
   // ── Выбор пункта → серверный расчёт цены ───────────────────────────────────
   async function choosePoint(p: Point) {
     setSelectedId(p.id);
     setPrice(null);
+    setDays(null);
     setPriceError(null);
     setPriceLoading(true);
     onSelect(null); // до расчёта цена неизвестна — оформлять нельзя
@@ -266,9 +218,10 @@ export function YandexPointPicker({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pointId: p.id, weightGrams, orderSum }),
       });
-      const d = (await r.json()) as { price?: number | null };
+      const d = (await r.json()) as { price?: number | null; days?: number | null };
       if (r.ok && typeof d.price === "number") {
         setPrice(d.price);
+        setDays(typeof d.days === "number" ? d.days : null);
         onSelect({ pointId: p.id, address: p.address || p.name, price: d.price });
       } else {
         setPriceError(
@@ -462,16 +415,6 @@ export function YandexPointPicker({
         )}
       </div>
 
-      {/* Поиск ближайших пунктов по точной геолокации браузера */}
-      <button
-        type="button"
-        onClick={findNearMe}
-        disabled={geoLocating}
-        className="self-start rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {geoLocating ? "Определяю местоположение…" : "Найти пункты рядом со мной"}
-      </button>
-
       {loading && <p className="text-sm text-zinc-500">Загружаю пункты…</p>}
 
       {error && (
@@ -562,6 +505,12 @@ export function YandexPointPicker({
                     {active && price != null && !priceLoading && (
                       <p className="mt-1 text-sm font-semibold">
                         Доставка: {price.toLocaleString("ru-RU")} ₽
+                        {days != null && (
+                          <span className="font-normal text-zinc-500">
+                            {" "}
+                            · ~{daysLabel(days)}
+                          </span>
+                        )}
                       </p>
                     )}
                     {active && priceError && !priceLoading && (

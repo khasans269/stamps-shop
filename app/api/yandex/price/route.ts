@@ -31,12 +31,12 @@ export async function POST(request: Request) {
   const orderSumRub = Number.isFinite(orderRaw) && orderRaw >= 0 ? orderRaw : 0;
 
   try {
-    const price = await getYandexPvzPrice({
+    const { price, days } = await getYandexPvzPrice({
       destinationPointId: pointId,
       weightGrams,
       orderSumRub,
     });
-    return NextResponse.json({ price });
+    return NextResponse.json({ price, days });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[yandex/price] ошибка:", detail);

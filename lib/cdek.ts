@@ -173,7 +173,9 @@ export async function listPoints(
 // через розничную наценку (НДС/страховка/упаковка/налог).
 export interface CityPrices {
   pvz: number | null; // розничная цена доставки в ПВЗ
+  pvzDays: string | null; // срок доставки в ПВЗ, рабочих дней ("2–4" или "3")
   postamat: number | null; // розничная цена доставки в постамат (или null)
+  postamatDays: string | null; // срок доставки в постамат
 }
 
 export async function calcCityPrices(params: {
@@ -202,27 +204,49 @@ export async function calcCityPrices(params: {
   if (!res.ok) {
     throw new Error(`CDEK tarifflist ${res.status}: ${text.slice(0, 300)}`);
   }
-  const data = JSON.parse(text) as {
-    tariff_codes?: Array<{ delivery_mode?: number; delivery_sum?: number }>;
+  type Tariff = {
+    delivery_mode?: number;
+    delivery_sum?: number;
+    period_min?: number;
+    period_max?: number;
   };
+  const data = JSON.parse(text) as { tariff_codes?: Tariff[] };
   const tariffs = Array.isArray(data.tariff_codes) ? data.tariff_codes : [];
 
-  // Минимальная базовая цена для нужного режима доставки.
-  const cheapestBase = (mode: number): number | null => {
-    const sums = tariffs
-      .filter((t) => t.delivery_mode === mode && Number.isFinite(t.delivery_sum))
-      .map((t) => Number(t.delivery_sum));
-    return sums.length ? Math.min(...sums) : null;
+  // Самый дешёвый тариф для нужного режима (берём его целиком — нужен ещё срок).
+  const cheapest = (mode: number): Tariff | null => {
+    const list = tariffs.filter(
+      (t) => t.delivery_mode === mode && Number.isFinite(t.delivery_sum)
+    );
+    if (!list.length) return null;
+    return list.reduce((a, b) =>
+      Number(a.delivery_sum) <= Number(b.delivery_sum) ? a : b
+    );
   };
 
-  const pvzBase = cheapestBase(4); // склад-склад → выдача в ПВЗ
-  const postamatBase = cheapestBase(7); // склад-постамат → выдача в постамат
+  // Срок доставки тарифа в рабочих днях: "2–4", "3" или null.
+  const periodLabel = (t: Tariff | null): string | null => {
+    if (!t) return null;
+    const { period_min: min, period_max: max } = t;
+    if (typeof min === "number" && typeof max === "number") {
+      return min === max ? `${min}` : `${min}–${max}`;
+    }
+    if (typeof min === "number") return `${min}`;
+    if (typeof max === "number") return `${max}`;
+    return null;
+  };
+
+  const pvzT = cheapest(4); // склад-склад → выдача в ПВЗ
+  const postamatT = cheapest(7); // склад-постамат → выдача в постамат
 
   return {
-    pvz: pvzBase != null ? cdekRetailDeliveryPrice(Math.ceil(pvzBase), orderSum) : null,
-    postamat:
-      postamatBase != null
-        ? cdekRetailDeliveryPrice(Math.ceil(postamatBase), orderSum)
-        : null,
+    pvz: pvzT
+      ? cdekRetailDeliveryPrice(Math.ceil(Number(pvzT.delivery_sum)), orderSum)
+      : null,
+    pvzDays: periodLabel(pvzT),
+    postamat: postamatT
+      ? cdekRetailDeliveryPrice(Math.ceil(Number(postamatT.delivery_sum)), orderSum)
+      : null,
+    postamatDays: periodLabel(postamatT),
   };
 }

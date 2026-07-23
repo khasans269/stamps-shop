@@ -16,7 +16,12 @@ type Point = {
   lat: number | null;
   lon: number | null;
 };
-type Prices = { pvz: number | null; postamat: number | null };
+type Prices = {
+  pvz: number | null;
+  pvzDays: string | null; // срок в ПВЗ, рабочих дней ("2–4")
+  postamat: number | null;
+  postamatDays: string | null;
+};
 
 // Минимальный тип Яндекс.Карт 2.1 (только то, что используем).
 type YMapInstance = {
@@ -62,7 +67,7 @@ export function CdekPointPicker({
   const [suggestions, setSuggestions] = useState<City[]>([]);
   const [city, setCity] = useState<City | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
-  const [prices, setPrices] = useState<Prices>({ pvz: null, postamat: null });
+  const [prices, setPrices] = useState<Prices>({ pvz: null, pvzDays: null, postamat: null, postamatDays: null });
   const [pointSearch, setPointSearch] = useState("");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,7 +116,7 @@ export function CdekPointPicker({
     onCityQueryChange(c.region ? `${c.name}, ${c.region}` : c.name);
     setSuggestions([]);
     setPoints([]);
-    setPrices({ pvz: null, postamat: null });
+    setPrices({ pvz: null, pvzDays: null, postamat: null, postamatDays: null });
     setSelectedCode(null);
     setPointSearch("");
     setShowMap(false);
@@ -129,8 +134,13 @@ export function CdekPointPicker({
       ]);
       const pr: Prices = {
         pvz: typeof priceRes?.pvz === "number" ? priceRes.pvz : null,
+        pvzDays: typeof priceRes?.pvzDays === "string" ? priceRes.pvzDays : null,
         postamat:
           typeof priceRes?.postamat === "number" ? priceRes.postamat : null,
+        postamatDays:
+          typeof priceRes?.postamatDays === "string"
+            ? priceRes.postamatDays
+            : null,
       };
       setPrices(pr);
       const all: Point[] = Array.isArray(pointsRes?.points)
@@ -152,6 +162,10 @@ export function CdekPointPicker({
 
   function priceForType(type: "PVZ" | "POSTAMAT"): number | null {
     return type === "POSTAMAT" ? prices.postamat : prices.pvz;
+  }
+
+  function daysForType(type: "PVZ" | "POSTAMAT"): string | null {
+    return type === "POSTAMAT" ? prices.postamatDays : prices.pvzDays;
   }
 
   function choosePoint(p: Point) {
@@ -364,8 +378,13 @@ export function CdekPointPicker({
                         </p>
                       </div>
                       {price != null && (
-                        <span className="shrink-0 text-sm font-semibold">
+                        <span className="shrink-0 text-right text-sm font-semibold">
                           {price.toLocaleString("ru-RU")} ₽
+                          {daysForType(p.type) && (
+                            <span className="block text-xs font-normal text-zinc-500">
+                              {daysForType(p.type)} раб. дн.
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>

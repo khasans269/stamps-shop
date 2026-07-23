@@ -137,42 +137,6 @@ export async function listYandexPoints(geoId: number): Promise<YandexPoint[]> {
   return parseYandexPoints(text);
 }
 
-// Пункты рядом с координатами — для «рядом со мной» (точная геолокация).
-// Метод принимает координатную рамку (CoordinateInterval по широте/долготе).
-export async function listYandexPointsNear(
-  lat: number,
-  lon: number
-): Promise<YandexPoint[]> {
-  const { token, base } = config();
-  if (!token) throw new Error("Не задан YANDEX_DELIVERY_TOKEN");
-  const dLat = 0.12; // ~13 км по широте
-  const dLon = 0.2; // ~сопоставимо по долготе на средних широтах
-  const resp = await fetch(`${base}/api/b2b/platform/pickup-points/list`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({
-      latitude: { from: lat - dLat, to: lat + dLat },
-      longitude: { from: lon - dLon, to: lon + dLon },
-    }),
-  });
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(
-      `Яндекс pickup-points/list(near) ${resp.status}: ${text.slice(0, 200)}`
-    );
-  }
-  const points = parseYandexPoints(text);
-  // Ближайшие — первыми (грубая метрика с поправкой на широту, для сортировки
-  // достаточно). Точки без координат — в конец.
-  const distSq = (p: YandexPoint): number => {
-    if (p.lat == null || p.lon == null) return Number.POSITIVE_INFINITY;
-    const dy = p.lat - lat;
-    const dx = (p.lon - lon) * Math.cos((lat * Math.PI) / 180);
-    return dy * dy + dx * dx;
-  };
-  points.sort((a, b) => distSq(a) - distSq(b));
-  return points.slice(0, 60);
-}
 
 // Ответ метода: { pricing_total: "225.7 RUB", delivery_days: 7 }.
 // Достаём число рублей из строки вида "225.7 RUB".
@@ -190,7 +154,7 @@ export async function getYandexPvzPrice(params: {
   destinationPointId: string;
   weightGrams: number;
   orderSumRub: number;
-}): Promise<number> {
+}): Promise<{ price: number; days: number | null }> {
   const { token, sourceStation, base } = config();
   if (!token || !sourceStation) {
     // Диагностика без утечки секрета: сообщаем только факт наличия и длину,
@@ -242,7 +206,7 @@ export async function getYandexPvzPrice(params: {
     throw new Error(`Яндекс API ${resp.status}: ${text.slice(0, 300)}`);
   }
 
-  let data: { pricing_total?: string };
+  let data: { pricing_total?: string; delivery_days?: number };
   try {
     data = JSON.parse(text);
   } catch {
@@ -252,6 +216,10 @@ export async function getYandexPvzPrice(params: {
     throw new Error(`В ответе нет pricing_total: ${text.slice(0, 200)}`);
   }
 
-  // Цену Яндекса оборачиваем розничной наценкой (упаковка + налог).
-  return yandexRetailDeliveryPrice(parseRub(data.pricing_total));
+  // Цену Яндекса оборачиваем розничной наценкой (упаковка + налог); срок
+  // (delivery_days) берём как есть — это расчётное число дней доставки.
+  return {
+    price: yandexRetailDeliveryPrice(parseRub(data.pricing_total)),
+    days: typeof data.delivery_days === "number" ? data.delivery_days : null,
+  };
 }
