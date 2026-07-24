@@ -228,6 +228,17 @@ export function CheckoutClient({
     }
   }, [loaded, orderRows.length, router]);
 
+  // Возврат «Назад» из ЮKassa восстанавливает чекаут из bfcache в состоянии
+  // submitting=true — кнопка остаётся в спиннере, а форма выглядит «зависшей».
+  // При восстановлении страницы из кэша сбрасываем флаг, чтобы форма ожила.
+  useEffect(() => {
+    function onPageShow(e: PageTransitionEvent) {
+      if (e.persisted) setSubmitting(false);
+    }
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
+
   // ── Память формы ──────────────────────────────────────────────────────────
   // Восстанавливаем ранее введённые данные при возврате на чекаут. Читаем
   // localStorage один раз при маунте — поля не слетают, если человек ушёл в
