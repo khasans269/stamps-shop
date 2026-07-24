@@ -17,6 +17,7 @@ import {
   sendToTelegram,
   validateOrder,
 } from "@/lib/order";
+import { sendToWeeek } from "@/lib/weeek";
 
 export const runtime = "nodejs";
 
@@ -61,10 +62,14 @@ export async function POST(request: Request) {
   const order = validation.order;
   const orderId = generateOrderId();
 
-  // Шлём в оба канала параллельно. Если один упал — второй должен успеть.
-  const [telegramResult, sheetsResult] = await Promise.allSettled([
+  // Шлём во все каналы параллельно. Telegram и Sheets — как раньше; Weeek CRM
+  // добавлен рядом (152-ФЗ: ПДн на серверах в РФ). Weeek — best-effort и НЕ
+  // влияет на решение «принята ли заявка»: считаем заявку принятой, если
+  // сработал хотя бы Telegram или Sheets (как было до Weeek).
+  const [telegramResult, sheetsResult, weeekResult] = await Promise.allSettled([
     sendToTelegram(orderId, order, { paid: false }),
     sendToSheets(orderId, order, { action: "create", status: "заявка (без оплаты)" }),
+    sendToWeeek(orderId, order),
   ]);
 
   const telegramOk = telegramResult.status === "fulfilled";
@@ -80,6 +85,12 @@ export async function POST(request: Request) {
     console.error(
       `[checkout] Sheets failed for order ${orderId}:`,
       (sheetsResult as PromiseRejectedResult).reason
+    );
+  }
+  if (weeekResult.status === "rejected") {
+    console.error(
+      `[checkout] Weeek failed for order ${orderId}:`,
+      (weeekResult as PromiseRejectedResult).reason
     );
   }
 
@@ -98,6 +109,10 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     orderId,
-    channels: { telegram: telegramOk, sheets: sheetsOk },
+    channels: {
+      telegram: telegramOk,
+      sheets: sheetsOk,
+      weeek: weeekResult.status === "fulfilled",
+    },
   });
 }

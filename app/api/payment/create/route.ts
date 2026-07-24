@@ -21,6 +21,7 @@ import {
   sendToSheets,
   validateOrder,
 } from "@/lib/order";
+import { sendToWeeek } from "@/lib/weeek";
 import { createPayment } from "@/lib/yookassa";
 
 export const runtime = "nodejs";
@@ -90,6 +91,15 @@ export async function POST(request: Request) {
   } catch (err) {
     sheetsPreOk = false;
     console.error(`[payment/create] Sheets pre-write failed for ${orderId}:`, err);
+  }
+
+  // 4b) Дублируем заказ как сделку в Weeek CRM (152-ФЗ: ПДн на серверах в РФ).
+  //     Отправка best-effort и НЕ блокирует создание платежа: если Weeek
+  //     недоступен, покупатель всё равно уходит на оплату, а сбой логируется.
+  try {
+    await sendToWeeek(orderId, order);
+  } catch (err) {
+    console.error(`[payment/create] Weeek send failed for ${orderId}:`, err);
   }
 
   // 5) Создание платежа в ЮKassa.
