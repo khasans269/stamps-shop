@@ -38,6 +38,20 @@ export const CDEK_PVZ_METHOD = "cdek-pvz";
 // считает виджет на клиенте, сервер её санитизирует так же, как у СДЭК.
 export const YANDEX_PVZ_METHOD = "yandex-pvz";
 
+// Способы, где «адрес» — это адрес ПУНКТА ВЫДАЧИ / точки самовывоза, а НЕ
+// личный адрес покупателя. Такой адрес не является персональными данными,
+// поэтому его можно показывать во внешних каналах (Telegram, Google Sheets).
+// Для любого другого способа (например, курьер на дом) адрес — это ПДн, и во
+// внешние каналы он не попадает (остаётся только в Weeek). Так по 152-ФЗ мы
+// не отправляем ПДн россиян в зарубежные сервисы (Telegram/Google).
+export function isPointDeliveryMethod(method: string): boolean {
+  return (
+    method === PICKUP_METHOD ||
+    method === CDEK_PVZ_METHOD ||
+    method === YANDEX_PVZ_METHOD
+  );
+}
+
 // Фикс-стоимость доставки в рублях. Берётся из переменной окружения
 // DELIVERY_FLAT_FEE (её задаёт продавец в Vercel), чтобы менять цену
 // доставки без правки кода и передеплоя. Если переменная не задана или
@@ -174,21 +188,15 @@ export function formatTelegramMessage(
   const header = opts.paid ? "✅ *Заказ оплачен*" : "🛒 *Новый заказ (ожидает оплаты)*";
   lines.push(`${header} №${escapeMd(orderId)}`);
   lines.push("");
-  lines.push("*Контакт*");
-  lines.push(`Имя: ${escapeMd(order.contact.name)}`);
-  lines.push(`Телефон: ${escapeMd(order.contact.phone)}`);
-  lines.push(`Email: ${escapeMd(order.contact.email)}`);
-  if (order.contact.telegram) {
-    lines.push(`Telegram: ${escapeMd(order.contact.telegram)}`);
-  }
-  lines.push("");
+  // ВАЖНО (152-ФЗ): в Telegram НЕ отправляем персональные данные покупателя
+  // (имя, телефон, email, Telegram-ник, личный адрес) и свободный комментарий
+  // (он может содержать ПДн). Всё это лежит в Weeek (серверы в РФ). Здесь —
+  // только обезличенные поля: способ доставки, ПВЗ, состав и суммы.
   lines.push("*Доставка*");
   lines.push(`Способ: ${escapeMd(order.delivery.methodLabel)}`);
-  lines.push(`Адрес: ${escapeMd(order.delivery.address)}`);
-  if (order.comment) {
-    lines.push("");
-    lines.push("*Комментарий*");
-    lines.push(escapeMd(order.comment));
+  if (isPointDeliveryMethod(order.delivery.method)) {
+    // Адрес пункта выдачи / самовывоза — не ПДн, показываем.
+    lines.push(`Пункт выдачи: ${escapeMd(order.delivery.address)}`);
   }
   lines.push("");
   lines.push("*Состав*");
@@ -209,6 +217,8 @@ export function formatTelegramMessage(
   lines.push(
     `*Итого к оплате:* ${escapeMd(order.grandTotal.toLocaleString("ru-RU"))} ₽`
   );
+  lines.push("");
+  lines.push(escapeMd("Данные покупателя (имя, контакты, адрес) — в Weeek."));
   if (opts.paymentId) {
     lines.push("");
     lines.push(`ЮKassa payment id: ${escapeMd(opts.paymentId)}`);
@@ -235,11 +245,10 @@ function formatPaidTelegramMessage(orderId: string, s: PaidSummary): string {
   const lines: string[] = [];
   lines.push(`✅ *Заказ оплачен* №${escapeMd(orderId)}`);
   lines.push("");
-  lines.push(`Покупатель: ${escapeMd(s.name)}`);
-  lines.push(`Телефон: ${escapeMd(s.phone)}`);
+  // ВАЖНО (152-ФЗ): имя и телефон покупателя в Telegram не шлём — они в Weeek.
   lines.push(`Сумма: ${escapeMd(s.total.toLocaleString("ru-RU"))} ₽`);
   lines.push("");
-  lines.push(escapeMd("Полный состав заказа — в таблице заказов (Google Sheets)."));
+  lines.push(escapeMd("Покупатель и состав заказа — в Weeek."));
   lines.push(`ЮKassa payment id: ${escapeMd(s.paymentId)}`);
   lines.push("");
   // Автосервис чеков для самозанятых в ЮKassa пока недоступен, поэтому
@@ -523,15 +532,33 @@ export async function sendToSheets(
   }
   const url = rawUrl.trim();
 
+  // ВАЖНО (152-ФЗ): в Google Sheets (зарубежные серверы) НЕ отправляем
+  // персональные данные покупателя. Полные данные лежат в Weeek (серверы в РФ),
+  // а строки в таблице связываются с ними по номеру заказа (orderId).
+  //
+  // Структуру payload сохраняем прежней (contact / delivery / items), чтобы не
+  // ломать Apps Script продавца, но персональные поля обнуляем:
+  //   • contact — пустые строки (имя/телефон/email/Telegram не передаём);
+  //   • delivery.address — только адрес ПВЗ/самовывоза (это не ПДн); личный
+  //     адрес (курьер на дом) не передаём;
+  //   • comment — свободный текст, может содержать ПДн, поэтому пустой.
+  const depersonalizedContact = { name: "", phone: "", email: "", telegram: "" };
+  const depersonalizedDelivery = {
+    method: order.delivery.method,
+    methodLabel: order.delivery.methodLabel,
+    address: isPointDeliveryMethod(order.delivery.method) ? order.delivery.address : "",
+    pointId: order.delivery.pointId ?? null,
+  };
+
   const payload = {
     action: opts.action,
     status: opts.status,
     paymentId: opts.paymentId ?? "",
     orderId,
     createdAt: new Date().toISOString(),
-    contact: order.contact,
-    delivery: order.delivery,
-    comment: order.comment ?? "",
+    contact: depersonalizedContact,
+    delivery: depersonalizedDelivery,
+    comment: "",
     items: order.items,
     itemsTotal: order.itemsTotal,
     deliveryFee: order.deliveryFee,
