@@ -306,34 +306,3 @@ export async function sendToWeeek(
 
   return dealId;
 }
-
-// ── Диагностика (для временного проверочного роута) ──────────────────────────
-//
-// Проверяет, что токен задан и что автоматически определяются воронка и
-// стартовый статус. НЕ создаёт сделку. Используется временным роутом
-// /api/weeek/ping для проверки настройки живьём на боевом домене.
-export async function weeekDiagnostics(): Promise<{
-  ok: boolean;
-  tokenPresent: boolean;
-  funnelId?: string;
-  statusId?: string;
-  error?: string;
-}> {
-  const tokenPresent = Boolean(process.env.WEEEK_API_TOKEN);
-  if (!tokenPresent) {
-    return { ok: false, tokenPresent: false, error: "WEEEK_API_TOKEN не задан" };
-  }
-  try {
-    // Сбрасываем кэш, чтобы диагностика всегда реально дёргала API.
-    cachedTarget = null;
-    const target = await resolveFunnelTarget();
-    return {
-      ok: true,
-      tokenPresent: true,
-      funnelId: target.funnelId,
-      statusId: target.statusId,
-    };
-  } catch (err) {
-    return { ok: false, tokenPresent: true, error: String(err) };
-  }
-}
